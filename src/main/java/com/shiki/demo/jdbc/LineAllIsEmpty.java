@@ -25,7 +25,7 @@ import static java.util.stream.Collectors.*;
 
 /**
  * @Author shiki
- * @description: 全部列为空的数据, todo 表rm_log已被排除, 因为过大导致查询超时
+ * @description: 全部列为空的数据
  * @Date 2020/10/26 下午2:54
  */
 public class LineAllIsEmpty {
