@@ -1,9 +1,12 @@
 package com.shiki.demo.jdbc.constants;
 
-import com.shiki.demo.jdbc.config.DBPool;
-
 import java.util.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * 需要使用到的常量
@@ -12,6 +15,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @Date: 2020/10/27 上午10:52
  */
 public interface JdbcConstants {
+
+    int C = Runtime.getRuntime().availableProcessors();
+    int RUN = C < 8 ? C : C - 4;
+    /**
+     * 创建线程池
+     *
+     * @Author: shiki
+     * @Date: 2020/10/28 上午10:35
+     */
+    ThreadPoolExecutor EXECUTOR = new ThreadPoolExecutor(
+            RUN,
+            2 * RUN,
+            30,
+            TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(4 * RUN), run -> new Thread(new ThreadGroup("shiki"), run, "sl"));
+
     /**
      * 已处理的表数量
      *
@@ -78,7 +97,7 @@ public interface JdbcConstants {
             "from\n" +
             "    INFORMATION_SCHEMA.Tables\n" +
             "where\n" +
-            "        table_schema = '"+ DBPool.db +"'";
+            "        table_schema = '%s'";
 
     /**
      * 用于替换的动态表列名
@@ -102,7 +121,7 @@ public interface JdbcConstants {
      * @Author: shiki
      * @Date: 2020/10/27 上午10:55
      */
-    String ALL_COLUMN_NAME = "select distinct column_name from information_schema.COLUMNS where table_name = '%s'";
+    String ALL_COLUMN_NAME = "select distinct column_name from information_schema.columns where table_schema = '%s' and table_name = '%s'";
 
     /**
      * 用于标记查询出的列名称
@@ -197,4 +216,26 @@ public interface JdbcConstants {
      * @Date: 2020/10/27 下午3:02
      */
     char COMMA = ',';
+
+    /**
+     * lambda异常处理
+     *
+     * @param consumer:
+     * @return java.util.function.Consumer<T>
+     * @Author: shiki
+     * @Date: 2020/10/28 上午11:03
+     */
+    static <T> Consumer<T> consumer(Consumer<T> consumer) {
+        return i -> {
+            try {
+                consumer.accept(i);
+            } catch (Exception ex) {
+                try {
+                    System.err.println("Exception occured : " + ex.getMessage());
+                } catch (ClassCastException ccEx) {
+                    throw ex;
+                }
+            }
+        };
+    }
 }

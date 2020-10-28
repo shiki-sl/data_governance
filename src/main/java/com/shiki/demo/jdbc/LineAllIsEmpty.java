@@ -1,8 +1,11 @@
 package com.shiki.demo.jdbc;
 
-import com.alibaba.fastjson.JSON;
 import com.google.common.collect.Sets;
+import com.shiki.demo.jdbc.config.DBPool;
 import com.shiki.demo.jdbc.config.JdbcUtil;
+import io.vavr.Function2;
+import io.vavr.Function3;
+import io.vavr.Tuple2;
 import org.springframework.util.ObjectUtils;
 
 import java.io.File;
@@ -13,12 +16,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static com.shiki.demo.jdbc.constants.JdbcConstants.*;
 import static java.lang.System.currentTimeMillis;
-import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.*;
 
 /**
  * @Author shiki
@@ -36,19 +39,14 @@ public class LineAllIsEmpty {
      */
     boolean findAny = false;
 
-    /**
-     * todo 排除字段, 旧系统对表进行更新字段
-     *
-     * @Author: shiki
-     * @Date: 2020/10/27 下午5:49
-     */
-    List<String> excludeColumn = Collections.singletonList("OTHER_INDUSTRY_REASON");
+    static String oldDB = "ccxi_crc_proj";
 
     /**
      * 文件输出位置
      * update_sql_path 添加json,初始化json,赋值json
      * del_column_path删除源字段
      * empty_column_path 空字段列表集合
+     * modify_path 新旧库的字段变化
      *
      * @Author: shiki
      * @Date: 2020/10/27 下午5:40
@@ -56,11 +54,92 @@ public class LineAllIsEmpty {
     final String update_sql_path = "/home/shiki/code/output/update_sql";
     final String del_column_path = "/home/shiki/code/output/del_column";
     final String empty_column_path = "/home/shiki/code/output/empty_column";
+    final String modify_path = "/home/shiki/code/output/modify";
 
-    public static void main(String[] args) throws FileNotFoundException {
-        final long start = currentTimeMillis();
-        new LineAllIsEmpty().tableFilter();
-        System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");
+    /**
+     * 取得全部表名
+     *
+     * @Author: shiki
+     * @Date: 2020/10/28 上午10:18
+     */
+    final static Function2<String, Statement, Tuple2<List<String>, List<String>>> GET_ALL_TABLE_NAME = (db, state) -> {
+        List<String> tableNames = new ArrayList<>(256);
+        List<String> deprecatedTable = new ArrayList<>(256);
+        try (ResultSet resultSet = state.executeQuery(String.format(ALL_TABLE_NAME, db))) {
+            while (resultSet.next()) {
+                String tableName = resultSet.getString("table_name");
+                final String tableComment = resultSet.getString("table_comment");
+                if (!"view".equalsIgnoreCase(tableComment)) {
+                    tableNames.add(tableName);
+                }
+                if (tableComment.startsWith("-无效表")) {
+                    deprecatedTable.add(tableName);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return new Tuple2<>(tableNames, deprecatedTable);
+    };
+
+    /**
+     * 获取表全部列
+     *
+     * @Author: shiki
+     * @Date: 2020/10/28 下午1:42
+     */
+    final static Function3<String, String, Statement, List<String>> GET_ALL_COLUMN = (tableName, db, state) -> {
+        System.out.println("tableName = " + tableName);
+        List<String> columnNames = new ArrayList<>(64);
+        final String format = String.format(ALL_COLUMN_NAME, db, tableName);
+        try (ResultSet resultSet = state.executeQuery(format)) {
+            while (resultSet.next()) {
+                columnNames.add(resultSet.getString("column_name"));
+            }
+        } catch (SQLException e) {
+            FAIL_TABLE_NAME.add(tableName);
+            System.out.println(format);
+            e.printStackTrace();
+        }
+        return columnNames;
+    };
+
+    /**
+     * 获取数据库更新信息
+     *
+     * @return java.util.Map<java.lang.String, io.vavr.Tuple2 < java.lang.String, java.util.List < java.lang.String>>>
+     * @Author: shiki
+     * @Date: 2020/10/28 下午3:31
+     */
+    public Map<String, Tuple2<String, List<String>>> dbUpdate() {
+        final HashMap<String, Tuple2<String, List<String>>> map = new HashMap<>(4);
+        String addTable = "+ table";
+        String dropTable = "- table";
+        String addColumn = "添加 column";
+        String dropColumn = "删除 column";
+        final Tuple2<List<String>, List<String>> tuple2 = conn(GET_ALL_TABLE_NAME.apply(DBPool.db)).orElseThrow(RuntimeException::new);
+        final List<String> newTable = tuple2._1;
+        final List<String> oldTable = conn(GET_ALL_TABLE_NAME.apply(oldDB)).orElseThrow(RuntimeException::new)._1;
+        final Sets.SetView<String> addTables = Sets.difference(new HashSet<>(newTable), new HashSet<>(oldTable));
+        map.put(addTable, new Tuple2<>("添加表", new ArrayList<>(addTables)));
+
+        final Sets.SetView<String> dropTables = Sets.difference(new HashSet<>(oldTable), new HashSet<>(newTable));
+        map.put(dropTable, new Tuple2<>("删除表", new ArrayList<>(dropTables)));
+
+        Sets.intersection(new HashSet<>(oldTable), new HashSet<>(newTable))
+                .forEach(tableName -> {
+                    final List<String> oldColumn = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(ArrayList::new).stream().map(String::toLowerCase).collect(toList());
+                    final List<String> newColumn = conn(GET_ALL_COLUMN.apply(tableName, oldDB)).orElseGet(ArrayList::new).stream().map(String::toLowerCase).collect(toList());
+                    final List<String> add = newColumn.stream().filter(column -> !oldColumn.contains(column)).collect(toList());
+                    if (add.size() > 0) {
+                        map.put(tableName, new Tuple2<>(addColumn, add));
+                    }
+                    final List<String> drop = oldColumn.stream().filter(column -> !newColumn.contains(column)).collect(toList());
+                    if (drop.size() > 0) {
+                        map.put(tableName, new Tuple2<>(dropColumn, drop));
+                    }
+                });
+        return map;
     }
 
     /**
@@ -90,8 +169,6 @@ public class LineAllIsEmpty {
                         .collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
             }
             System.out.println("maps.size() = " + maps.size());
-            System.out.println("maps = " + maps);
-            System.out.println("JSON.toJSONString(maps) = " + JSON.toJSONString(maps));
             System.out.println("执行失败的表 failTableName = " + FAIL_TABLE_NAME);
             return maps;
         } catch (SQLException e) {
@@ -110,7 +187,7 @@ public class LineAllIsEmpty {
      */
     List<String> getAllTableName(Statement statement) {
         List<String> tableNames = new ArrayList<>(256);
-        try (ResultSet resultSet = statement.executeQuery(ALL_TABLE_NAME)) {
+        try (ResultSet resultSet = statement.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db))) {
             while (resultSet.next()) {
                 String tableName = resultSet.getString("table_name");
                 final String tableComment = resultSet.getString("table_comment");
@@ -138,12 +215,14 @@ public class LineAllIsEmpty {
         System.out.println("tableName = " + tableName);
         List<String> columnNames = new ArrayList<>(64);
         Map<String, List<String>> map = new HashMap<>(255);
-        try (ResultSet resultSet = statement.executeQuery(String.format(ALL_COLUMN_NAME, tableName))) {
+        final String format = String.format(ALL_COLUMN_NAME, DBPool.db, tableName);
+        try (ResultSet resultSet = statement.executeQuery(format)) {
             while (resultSet.next()) {
                 columnNames.add(resultSet.getString("column_name"));
             }
         } catch (SQLException e) {
             FAIL_TABLE_NAME.add(tableName);
+            System.out.println(format);
             e.printStackTrace();
         }
         if (columnNames.size() != 0) {
@@ -175,13 +254,15 @@ public class LineAllIsEmpty {
         }
         List<String> allLineIsEmptyColumnNames = new ArrayList<>(64);
         StringBuilder sb = new StringBuilder();
-        columnNames.stream().filter(name -> !excludeColumn.contains(name)).forEach(
-                columnName -> sb
-                        .append(UNION)
+        columnNames
+//                .stream().filter(name -> !excludeColumn.contains(name))
+                .forEach(
+                        columnName -> sb
+                                .append(UNION)
 //                        替换条件
-                        .append(TABLE_ALL_LINE_IS_NOT_EMPTY
-                                .replaceAll(DYNAMIC_TABLE_NAME, tableName)
-                                .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
+                                .append(TABLE_ALL_LINE_IS_NOT_EMPTY
+                                        .replaceAll(DYNAMIC_TABLE_NAME, tableName)
+                                        .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
 
         try (ResultSet resultSet = statement.executeQuery(PRE + sb.toString())) {
             while (resultSet.next()) {
@@ -206,32 +287,59 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午4:58
      */
-    void tableFilter() throws FileNotFoundException {
+    void outTableFilterSql() {
         final Map<String, List<String>> maps = lineAllIsEmpty();
 //        尝试设置输出位置,生成文件
-        final PrintStream updateSql = new PrintStream(new File(update_sql_path));
-        final PrintStream dropSql = new PrintStream(new File(del_column_path));
-        maps.forEach((k, v) -> {
-            final String infoDetail = "history";
-            updateSql.printf((ADD_COLUMN) + "%n", k, infoDetail);
-            updateSql.printf((EMPTY_COLUMNS_2_JSON) + "%n", k, infoDetail);
+        try (final PrintStream updateSql = new PrintStream(new File(update_sql_path));
+             final PrintStream dropSql = new PrintStream(new File(del_column_path));
+             final PrintStream emptyColumn = new PrintStream(new File(empty_column_path))) {
+            maps.forEach((k, v) -> {
+                final String infoDetail = "history";
+                updateSql.printf((ADD_COLUMN) + "%n", k, infoDetail);
+                updateSql.printf((EMPTY_COLUMNS_2_JSON) + "%n", k, infoDetail);
 //            json字段生成
-            final String addJson = v.stream()
-                    .map(str -> String.format(JSON_SET, infoDetail, infoDetail, str, str))
-                    .collect(joining(","))
-                    .replaceAll("\\[", "(").replaceAll("]", ")");
-            updateSql.println(String.format(UPDATE_SET, k) + addJson + ";");
+                final String addJson = v.stream()
+                        .map(str -> String.format(JSON_SET, infoDetail, infoDetail, str, str))
+                        .collect(joining(","))
+                        .replaceAll("\\[", "(").replaceAll("]", ")");
+                updateSql.println(String.format(UPDATE_SET, k) + addJson + ";");
 //            原字段删除
-            final String drop = v.stream()
-                    .map(str -> String.format(DROP, str))
-                    .collect(joining(","))
-                    .replaceAll("\\[", "").replaceAll("]", "");
-            dropSql.println(String.format(ALTER_TABLE, k) + drop + ";");
-        });
-        final PrintStream emptyColumn = new PrintStream(new File(empty_column_path));
-        Stream.of(maps)
-                .peek(map -> map.forEach((k, v) -> maps.put(k, leftIntersection(v))))
-                .forEach(emptyColumn::println);
+                final String drop = v.stream()
+                        .map(str -> String.format(DROP, str))
+                        .collect(joining(","))
+                        .replaceAll("\\[", "").replaceAll("]", "");
+                dropSql.println(String.format(ALTER_TABLE, k) + drop + ";");
+            });
+            Stream.of(maps)
+                    .peek(map -> map.forEach((k, v) -> maps.put(k, leftIntersection(v))))
+                    .forEach(emptyColumn::println);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 输出新旧库字段变化文件
+     *
+     * @Author: shiki
+     * @Date: 2020/10/28 下午3:39
+     */
+    void outBDUpdate() {
+        try (final PrintStream modify = new PrintStream(new File(modify_path))) {
+            dbUpdate().forEach((k, v) -> modify.println(k + "  " + v));
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    <T> Optional<T> conn(Function<Statement, T> fun) {
+        try (Connection connection = JdbcUtil.getConnection();
+             Statement statement = connection.createStatement()) {
+            return Optional.ofNullable(fun.apply(statement));
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Optional.empty();
     }
 
     /**
@@ -247,4 +355,13 @@ public class LineAllIsEmpty {
         return new ArrayList<>(view);
     }
 
+
+    public static void main(String[] args) {
+        final long start = currentTimeMillis();
+        final LineAllIsEmpty empty = new LineAllIsEmpty();
+        EXECUTOR.submit(empty::outBDUpdate);
+        EXECUTOR.submit(empty::outTableFilterSql);
+        System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");
+        EXECUTOR.shutdown();
+    }
 }
