@@ -27,6 +27,17 @@ import static java.util.stream.Collectors.*;
  * @Author shiki
  * @description: 全部列为空的数据
  * @Date 2020/10/26 下午2:54
+ * <p>
+ * 不需要进行操作和修改的常量位于{@link com.shiki.demo.jdbc.constants.JdbcConstants}中
+ * <p>
+ * {@link #main(String[]) 入口}
+ * <p>
+ * @see #findAny 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
+ * <p>
+ * @see #root_path 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成四个独立文件,修改请见{@link #update_sql_path},
+ * {@link #del_column_path},{@link #empty_column_path},{@link #modify_path} 独立文件详情见{@link #root_path} 上方字段注释
+ * <p>
+ * @see #oldDB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool.db} 新库名
  */
 public class LineAllIsEmpty {
 
@@ -51,10 +62,11 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午5:40
      */
-    final String update_sql_path = "/home/shiki/code/output/update_sql";
-    final String del_column_path = "/home/shiki/code/output/del_column";
-    final String empty_column_path = "/home/shiki/code/output/empty_column";
-    final String modify_path = "/home/shiki/code/output/modify";
+    final String root_path = "/home/shiki/code/output/";
+    final String update_sql_path = root_path + "update_sql";
+    final String del_column_path = root_path + "del_column";
+    final String empty_column_path = root_path + "empty_column";
+    final String modify_path = root_path + "modify";
 
     /**
      * 取得全部表名
@@ -332,6 +344,14 @@ public class LineAllIsEmpty {
         }
     }
 
+    /**
+     * 注入Statement,获取执行结果
+     *
+     * @param fun:被注入Statement的方法体
+     * @return java.util.Optional<T> 执行结果
+     * @Author: shiki
+     * @Date: 2020/10/28 下午4:02
+     */
     <T> Optional<T> conn(Function<Statement, T> fun) {
         try (Connection connection = JdbcUtil.getConnection();
              Statement statement = connection.createStatement()) {
@@ -354,7 +374,6 @@ public class LineAllIsEmpty {
         final Sets.SetView<T> view = Sets.difference(new HashSet<>(list1), new HashSet<>(INVALID_COLUMN));
         return new ArrayList<>(view);
     }
-
 
     public static void main(String[] args) {
         final long start = currentTimeMillis();
