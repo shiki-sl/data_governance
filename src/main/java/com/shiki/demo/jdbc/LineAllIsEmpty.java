@@ -6,6 +6,7 @@ import com.shiki.demo.jdbc.config.JdbcUtil;
 import io.vavr.Function2;
 import io.vavr.Function3;
 import io.vavr.Tuple2;
+import lombok.val;
 import org.springframework.util.ObjectUtils;
 
 import java.io.File;
@@ -65,11 +66,11 @@ public class LineAllIsEmpty {
      * @Date: 2020/10/27 下午5:40
      */
     final String root_path = "/home/shiki/code/output/";
-    final String update_sql_path = root_path + "update_sql";
-    final String del_column_path = root_path + "del_column";
+    final String update_sql_path = root_path + "update_sql.sql";
+    final String del_column_path = root_path + "del_column.sql";
     final String empty_column_path = root_path + "empty_column";
     final String modify_path = root_path + "modify";
-    final String del_table = root_path + "del_table";
+    final String del_table = root_path + "del_table.sql";
 
     /**
      * 取得全部表名
@@ -117,6 +118,21 @@ public class LineAllIsEmpty {
             e.printStackTrace();
         }
         return columnNames;
+    };
+
+    final static Function<Statement, List<String>> GET_DROP_PK = state -> {
+
+        System.out.println(DROP_PK);
+        try (val resultSet = state.executeQuery(DROP_PK)) {
+            final List<String> pk = new ArrayList<>();
+            while (resultSet.next()) {
+                pk.add(resultSet.getString(DEL_PK));
+            }
+            return pk;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Collections.emptyList();
     };
 
     /**
@@ -205,13 +221,15 @@ public class LineAllIsEmpty {
         try (ResultSet resultSet = statement.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
              PrintStream delTable = new PrintStream(new File(del_table))
         ) {
+//            删除表之前先清空外键
+            conn(GET_DROP_PK).orElseGet(ArrayList::new).forEach(delTable::println);
             while (resultSet.next()) {
                 String tableName = resultSet.getString("table_name");
                 final String tableComment = resultSet.getString("table_comment");
                 if (!tableComment.startsWith("-无效表") && !INVALID_TABLES.contains(tableName)) {
                     tableNames.add(tableName);
                 } else if (tableComment.startsWith("-无效表")) {
-                    delTable.println(DROP_TABLE + tableName);
+                    delTable.println(DROP_TABLE + tableName + ";");
                 }
             }
         } catch (SQLException | FileNotFoundException e) {
@@ -274,7 +292,6 @@ public class LineAllIsEmpty {
         List<String> allLineIsEmptyColumnNames = new ArrayList<>(64);
         StringBuilder sb = new StringBuilder();
         columnNames
-//                .stream().filter(name -> !excludeColumn.contains(name))
                 .forEach(
                         columnName -> sb
                                 .append(UNION)
@@ -285,13 +302,12 @@ public class LineAllIsEmpty {
 
         try (ResultSet resultSet = statement.executeQuery(PRE + sb.toString())) {
             while (resultSet.next()) {
-                if (resultSet.getInt("count") == 0) {
-                    allLineIsEmptyColumnNames.add(resultSet.getString("column_name"));
+                final String columnName = resultSet.getString("column_name");
+                if (resultSet.getInt("count") == 0 || INVALID_COLUMN.contains(columnName)) {
+                    allLineIsEmptyColumnNames.add(columnName);
                 }
             }
-//            与统一字段进行合并
-            final Sets.SetView<String> view = Sets.union(new HashSet<>(allLineIsEmptyColumnNames), new HashSet<>(INVALID_COLUMN));
-            return new ArrayList<>(view);
+            return allLineIsEmptyColumnNames;
         } catch (SQLException e) {
             System.out.println(PRE + sb.toString());
             FAIL_TABLE_NAME.add(tableName);
@@ -344,7 +360,7 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/28 下午3:39
      */
-    void outBDUpdate() {
+    void outUpdate() {
         try (final PrintStream modify = new PrintStream(new File(modify_path))) {
             dbUpdate().forEach((k, v) -> modify.println(k + "  " + v));
         } catch (FileNotFoundException e) {
@@ -386,7 +402,7 @@ public class LineAllIsEmpty {
     public static void main(String[] args) {
         final long start = currentTimeMillis();
         final LineAllIsEmpty empty = new LineAllIsEmpty();
-        EXECUTOR.submit(empty::outBDUpdate);
+        EXECUTOR.submit(empty::outUpdate);
         EXECUTOR.submit(empty::outTableFilterSql);
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");

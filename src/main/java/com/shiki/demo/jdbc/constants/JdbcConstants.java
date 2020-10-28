@@ -84,12 +84,37 @@ public interface JdbcConstants {
     Set<String> FAIL_TABLE_NAME = new HashSet<>(255);
 
     /**
+     * 外键查询结果别名
+     *
+     * @Author: shiki
+     * @Date: 2020/10/28 下午8:30
+     */
+    String DEL_PK = "del_pk";
+
+    String NEW_DB = "ccxi_crc_proj_new";
+
+    /**
+     * 删除全部外键
+     *
+     * @Author: shiki
+     * @Date: 2020/10/28 下午8:10
+     */
+    String DROP_PK = " select\n " +
+            " concat( 'alter table ', '" + NEW_DB + "', '.', table_name, ' drop foreign key ', constraint_name, ';' ) as " + DEL_PK + "\n " +
+            " from\n " +
+            " information_schema.table_constraints \n " +
+            " where\n " +
+            " constraint_type = 'FOREIGN KEY' \n " +
+            " and table_schema = '" + "ccxi_crc_proj_combing" + "';";
+
+
+    /**
      * 删除表
      *
      * @Author: shiki
      * @Date: 2020/10/28 下午5:37
      */
-    String DROP_TABLE = "drop table ";
+    String DROP_TABLE = "drop  table if exists ";
 
     /**
      * 查询全部表名
