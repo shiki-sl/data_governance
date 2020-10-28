@@ -361,7 +361,7 @@ public class LineAllIsEmpty {
         final LineAllIsEmpty empty = new LineAllIsEmpty();
         EXECUTOR.submit(empty::outBDUpdate);
         EXECUTOR.submit(empty::outTableFilterSql);
-        System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");
         EXECUTOR.shutdown();
+        System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");
     }
 }
