@@ -5,8 +5,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
 /**
  * 需要使用到的常量
@@ -84,6 +82,14 @@ public interface JdbcConstants {
      * @Date: 2020/10/26 下午5:20
      */
     Set<String> FAIL_TABLE_NAME = new HashSet<>(255);
+
+    /**
+     * 删除表
+     *
+     * @Author: shiki
+     * @Date: 2020/10/28 下午5:37
+     */
+    String DROP_TABLE = "drop table ";
 
     /**
      * 查询全部表名
@@ -208,34 +214,4 @@ public interface JdbcConstants {
      * @Date: 2020/10/27 下午1:57
      */
     String JSON_SET = "%s=JSON_SET(%s, \"$.%s\", %s) ";
-
-    /**
-     * 逗号
-     *
-     * @Author: shiki
-     * @Date: 2020/10/27 下午3:02
-     */
-    char COMMA = ',';
-
-    /**
-     * lambda异常处理
-     *
-     * @param consumer:
-     * @return java.util.function.Consumer<T>
-     * @Author: shiki
-     * @Date: 2020/10/28 上午11:03
-     */
-    static <T> Consumer<T> consumer(Consumer<T> consumer) {
-        return i -> {
-            try {
-                consumer.accept(i);
-            } catch (Exception ex) {
-                try {
-                    System.err.println("Exception occured : " + ex.getMessage());
-                } catch (ClassCastException ccEx) {
-                    throw ex;
-                }
-            }
-        };
-    }
 }

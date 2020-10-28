@@ -36,8 +36,9 @@ import static java.util.stream.Collectors.*;
  * <p>
  * @see #root_path 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成四个独立文件,修改请见{@link #update_sql_path},
  * {@link #del_column_path},{@link #empty_column_path},{@link #modify_path} 独立文件详情见{@link #root_path} 上方字段注释
+ * {@link #del_table}
  * <p>
- * @see #oldDB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool.db} 新库名
+ * @see #oldDB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
  */
 public class LineAllIsEmpty {
 
@@ -58,6 +59,7 @@ public class LineAllIsEmpty {
      * del_column_path删除源字段
      * empty_column_path 空字段列表集合
      * modify_path 新旧库的字段变化
+     * del_table 不需要的表
      *
      * @Author: shiki
      * @Date: 2020/10/27 下午5:40
@@ -67,6 +69,7 @@ public class LineAllIsEmpty {
     final String del_column_path = root_path + "del_column";
     final String empty_column_path = root_path + "empty_column";
     final String modify_path = root_path + "modify";
+    final String del_table = root_path + "del_table";
 
     /**
      * 取得全部表名
@@ -101,7 +104,7 @@ public class LineAllIsEmpty {
      * @Date: 2020/10/28 下午1:42
      */
     final static Function3<String, String, Statement, List<String>> GET_ALL_COLUMN = (tableName, db, state) -> {
-        System.out.println("tableName = " + tableName);
+        System.out.println("tableSchema " + db + " tableName = " + tableName);
         List<String> columnNames = new ArrayList<>(64);
         final String format = String.format(ALL_COLUMN_NAME, db, tableName);
         try (ResultSet resultSet = state.executeQuery(format)) {
@@ -199,15 +202,19 @@ public class LineAllIsEmpty {
      */
     List<String> getAllTableName(Statement statement) {
         List<String> tableNames = new ArrayList<>(256);
-        try (ResultSet resultSet = statement.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db))) {
+        try (ResultSet resultSet = statement.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
+             PrintStream delTable = new PrintStream(new File(del_table))
+        ) {
             while (resultSet.next()) {
                 String tableName = resultSet.getString("table_name");
                 final String tableComment = resultSet.getString("table_comment");
                 if (!tableComment.startsWith("-无效表") && !INVALID_TABLES.contains(tableName)) {
                     tableNames.add(tableName);
+                } else if (tableComment.startsWith("-无效表")) {
+                    delTable.println(DROP_TABLE + tableName);
                 }
             }
-        } catch (SQLException e) {
+        } catch (SQLException | FileNotFoundException e) {
             e.printStackTrace();
         }
         return tableNames;
@@ -224,7 +231,7 @@ public class LineAllIsEmpty {
      */
     Map<String, List<String>> getTableAllLine(Statement statement, String tableName) {
         final long startTime = currentTimeMillis();
-        System.out.println("tableName = " + tableName);
+        System.out.println("method tableName = " + tableName);
         List<String> columnNames = new ArrayList<>(64);
         Map<String, List<String>> map = new HashMap<>(255);
         final String format = String.format(ALL_COLUMN_NAME, DBPool.db, tableName);
@@ -321,10 +328,11 @@ public class LineAllIsEmpty {
                         .collect(joining(","))
                         .replaceAll("\\[", "").replaceAll("]", "");
                 dropSql.println(String.format(ALTER_TABLE, k) + drop + ";");
+                final List<String> list = leftIntersection(v);
+                if (list.size() > 0) {
+                    emptyColumn.println(k + "    " + list);
+                }
             });
-            Stream.of(maps)
-                    .peek(map -> map.forEach((k, v) -> maps.put(k, leftIntersection(v))))
-                    .forEach(emptyColumn::println);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
