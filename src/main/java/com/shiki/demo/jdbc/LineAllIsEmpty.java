@@ -7,6 +7,7 @@ import io.vavr.Function2;
 import io.vavr.Function3;
 import io.vavr.Tuple2;
 import lombok.val;
+import lombok.var;
 import org.springframework.util.ObjectUtils;
 
 import java.io.File;
@@ -35,9 +36,9 @@ import static java.util.stream.Collectors.*;
  * <p>
  * @see #findAny 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
  * <p>
- * @see #root_path 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成四个独立文件,修改请见{@link #update_sql_path},
- * {@link #del_column_path},{@link #empty_column_path},{@link #modify_path} 独立文件详情见{@link #root_path} 上方字段注释
- * {@link #del_table}
+ * @see #ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成四个独立文件,修改请见{@link #UPDATE_SQL_PATH},
+ * {@link #DEL_COLUMN_PATH},{@link #EMPTY_COLUMN_PATH},{@link #MODIFY_PATH} 独立文件详情见{@link #ROOT_PATH} 上方字段注释
+ * {@link #DEL_TABLE}
  * <p>
  * @see #oldDB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
  */
@@ -50,7 +51,7 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午5:44
      */
-    boolean findAny = false;
+    final static boolean findAny = false;
 
     static String oldDB = "ccxi_crc_proj";
 
@@ -65,12 +66,13 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午5:40
      */
-    final String root_path = "/home/shiki/code/output/";
-    final String update_sql_path = root_path + "update_sql.sql";
-    final String del_column_path = root_path + "del_column.sql";
-    final String empty_column_path = root_path + "empty_column";
-    final String modify_path = root_path + "modify";
-    final String del_table = root_path + "del_table.sql";
+    static final String ROOT_PATH = "/home/shiki/code/output/";
+    static final String UPDATE_SQL_PATH = ROOT_PATH + "update_sql.sql";
+    static final String DEL_COLUMN_PATH = ROOT_PATH + "del_column.sql";
+    static final String EMPTY_COLUMN_PATH = ROOT_PATH + "empty_column";
+    static final String MODIFY_PATH = ROOT_PATH + "modify";
+    static final String DEL_TABLE = ROOT_PATH + "del_table.sql";
+    static final String TABLE_COUNT_COLUMN = ROOT_PATH + "count_column.txt";
 
     /**
      * 取得全部表名
@@ -120,9 +122,13 @@ public class LineAllIsEmpty {
         return columnNames;
     };
 
+    /**
+     * 取得全部外键
+     *
+     * @Author: shiki
+     * @Date: 2020/10/29 下午3:00
+     */
     final static Function<Statement, List<String>> GET_DROP_PK = state -> {
-
-        System.out.println(DROP_PK);
         try (val resultSet = state.executeQuery(DROP_PK)) {
             final List<String> pk = new ArrayList<>();
             while (resultSet.next()) {
@@ -136,13 +142,29 @@ public class LineAllIsEmpty {
     };
 
     /**
+     * 计算全部表的列总数
+     *
+     * @Author: shiki
+     * @Date: 2020/10/29 下午3:29
+     */
+    final static Function2<String, Statement, Integer> GET_TABLE_COUNT_COLUMN = (tableName, state) -> {
+        try (var resultSet = state.executeQuery(String.format(TABLE_COLUMN_COLUMN, DBPool.db, tableName))) {
+            resultSet.next();
+            return resultSet.getInt("count");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    };
+
+    /**
      * 获取数据库更新信息
      *
      * @return java.util.Map<java.lang.String, io.vavr.Tuple2 < java.lang.String, java.util.List < java.lang.String>>>
      * @Author: shiki
      * @Date: 2020/10/28 下午3:31
      */
-    public Map<String, Tuple2<String, List<String>>> dbUpdate() {
+    static public Map<String, Tuple2<String, List<String>>> dbUpdate() {
         final HashMap<String, Tuple2<String, List<String>>> map = new HashMap<>(4);
         String addTable = "+ table";
         String dropTable = "- table";
@@ -180,7 +202,7 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午5:00
      */
-    Map<String, List<String>> lineAllIsEmpty() {
+    static Map<String, List<String>> lineAllIsEmpty() {
         try (Connection connection = JdbcUtil.getConnection();
              Statement statement = connection.createStatement()) {
             final List<String> tableNames = getAllTableName(statement);
@@ -216,10 +238,10 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午4:56
      */
-    List<String> getAllTableName(Statement statement) {
+    static List<String> getAllTableName(Statement statement) {
         List<String> tableNames = new ArrayList<>(256);
         try (ResultSet resultSet = statement.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
-             PrintStream delTable = new PrintStream(new File(del_table))
+             PrintStream delTable = new PrintStream(new File(DEL_TABLE))
         ) {
 //            删除表之前先清空外键
             conn(GET_DROP_PK).orElseGet(ArrayList::new).forEach(delTable::println);
@@ -247,7 +269,7 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午4:57
      */
-    Map<String, List<String>> getTableAllLine(Statement statement, String tableName) {
+    static Map<String, List<String>> getTableAllLine(Statement statement, String tableName) {
         final long startTime = currentTimeMillis();
         System.out.println("method tableName = " + tableName);
         List<String> columnNames = new ArrayList<>(64);
@@ -285,7 +307,7 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午4:57
      */
-    List<String> columnIsAllEmpty(Statement statement, List<String> columnNames, String tableName) {
+    static List<String> columnIsAllEmpty(Statement statement, List<String> columnNames, String tableName) {
         if (ObjectUtils.isEmpty(columnNames)) {
             return Collections.emptyList();
         }
@@ -322,12 +344,12 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午4:58
      */
-    void outTableFilterSql() {
+    static void outTableFilterSql() {
         final Map<String, List<String>> maps = lineAllIsEmpty();
 //        尝试设置输出位置,生成文件
-        try (final PrintStream updateSql = new PrintStream(new File(update_sql_path));
-             final PrintStream dropSql = new PrintStream(new File(del_column_path));
-             final PrintStream emptyColumn = new PrintStream(new File(empty_column_path))) {
+        try (final PrintStream updateSql = new PrintStream(new File(UPDATE_SQL_PATH));
+             final PrintStream dropSql = new PrintStream(new File(DEL_COLUMN_PATH));
+             final PrintStream emptyColumn = new PrintStream(new File(EMPTY_COLUMN_PATH))) {
             maps.forEach((k, v) -> {
                 final String infoDetail = "history";
                 updateSql.printf((ADD_COLUMN) + "%n", k, infoDetail);
@@ -355,13 +377,30 @@ public class LineAllIsEmpty {
     }
 
     /**
+     * 输出全部表的字段总数
+     *
+     * @Author: shiki
+     * @Date: 2020/10/29 下午3:42
+     */
+    static void getAllTableColumn() {
+        try (var out = new PrintStream(TABLE_COUNT_COLUMN)) {
+            conn(GET_ALL_TABLE_NAME.apply(DBPool.db)).ifPresent(var -> var._1.forEach(str -> {
+                out.print(str + ":  ");
+                conn(GET_TABLE_COUNT_COLUMN.apply(str)).ifPresent(out::println);
+            }));
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
      * 输出新旧库字段变化文件
      *
      * @Author: shiki
      * @Date: 2020/10/28 下午3:39
      */
-    void outUpdate() {
-        try (final PrintStream modify = new PrintStream(new File(modify_path))) {
+    static void outUpdate() {
+        try (final PrintStream modify = new PrintStream(new File(MODIFY_PATH))) {
             dbUpdate().forEach((k, v) -> modify.println(k + "  " + v));
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -376,7 +415,7 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/28 下午4:02
      */
-    <T> Optional<T> conn(Function<Statement, T> fun) {
+    static <T> Optional<T> conn(Function<Statement, T> fun) {
         try (Connection connection = JdbcUtil.getConnection();
              Statement statement = connection.createStatement()) {
             return Optional.ofNullable(fun.apply(statement));
@@ -394,17 +433,19 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午4:59
      */
-    private <T> List<T> leftIntersection(List<T> list1) {
+    static <T> List<T> leftIntersection(List<T> list1) {
         final Sets.SetView<T> view = Sets.difference(new HashSet<>(list1), new HashSet<>(INVALID_COLUMN));
         return new ArrayList<>(view);
     }
 
     public static void main(String[] args) {
         final long start = currentTimeMillis();
-        final LineAllIsEmpty empty = new LineAllIsEmpty();
-        EXECUTOR.submit(empty::outUpdate);
-        EXECUTOR.submit(empty::outTableFilterSql);
+//        EXECUTOR.submit(empty::outUpdate);
+//        EXECUTOR.submit(empty::outTableFilterSql);
+        getAllTableColumn();
+
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");
     }
+
 }

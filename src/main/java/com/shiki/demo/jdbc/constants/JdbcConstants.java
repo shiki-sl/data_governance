@@ -155,6 +155,14 @@ public interface JdbcConstants {
     String ALL_COLUMN_NAME = "select distinct column_name from information_schema.columns where table_schema = '%s' and table_name = '%s'";
 
     /**
+     * 查询表字段数
+     *
+     * @Author: shiki
+     * @Date: 2020/10/29 下午3:05
+     */
+    String TABLE_COLUMN_COLUMN = "select count(*) as count from information_schema.columns where table_schema = '%s' and table_name = '%s'";
+
+    /**
      * 用于标记查询出的列名称
      *
      * @Author: shiki
