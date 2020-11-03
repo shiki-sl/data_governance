@@ -1,5 +1,7 @@
 package com.shiki.demo.jdbc;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.google.common.collect.Sets;
 import com.shiki.demo.jdbc.config.DBPool;
 import com.shiki.demo.jdbc.config.JdbcUtil;
@@ -13,12 +15,11 @@ import org.springframework.util.ObjectUtils;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static com.shiki.demo.jdbc.constants.JdbcConstants.*;
@@ -73,6 +74,7 @@ public class LineAllIsEmpty {
     static final String MODIFY_PATH = ROOT_PATH + "modify";
     static final String DEL_TABLE = ROOT_PATH + "del_table.sql";
     static final String TABLE_COUNT_COLUMN = ROOT_PATH + "count_column.txt";
+    static final String MODIFY_EMPTY_COLUMN_COMMENT = ROOT_PATH + "modify_empty_column_comment.sql";
 
     /**
      * 取得全部表名
@@ -101,6 +103,53 @@ public class LineAllIsEmpty {
     };
 
     /**
+     * 取得全部外键
+     *
+     * @Author: shiki
+     * @Date: 2020/10/29 下午3:00
+     */
+    final static Function<Statement, List<String>> GET_DROP_PK = state -> {
+        try (val resultSet = state.executeQuery(DROP_PK)) {
+            final List<String> pk = new ArrayList<>();
+            while (resultSet.next()) {
+                pk.add(resultSet.getString(DEL_PK));
+            }
+            return pk;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Collections.emptyList();
+    };
+
+    /**
+     * 获取数据库有效表名
+     *
+     * @Author: shiki
+     * @Date: 2020/10/27 下午4:56
+     */
+    final static Function<Statement, List<String>> GET_VALID_TABLE_NAME = state -> {
+        List<String> tableNames = new ArrayList<>(256);
+        try (ResultSet resultSet = state.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
+             PrintStream delTable = new PrintStream(new File(DEL_TABLE))
+        ) {
+//            删除表之前先清空外键
+            conn(GET_DROP_PK).orElseGet(ArrayList::new).forEach(delTable::println);
+            while (resultSet.next()) {
+                String tableName = resultSet.getString("table_name");
+                final String tableComment = resultSet.getString("table_comment");
+                if (!tableComment.startsWith("-无效表") && !INVALID_TABLES.contains(tableName)) {
+                    tableNames.add(tableName);
+                } else if (tableComment.startsWith("-无效表")) {
+                    delTable.println(DROP_TABLE + tableName + ";");
+                }
+            }
+        } catch (SQLException | FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        return tableNames;
+    };
+
+    /**
      * 获取表全部列
      *
      * @Author: shiki
@@ -123,25 +172,6 @@ public class LineAllIsEmpty {
     };
 
     /**
-     * 取得全部外键
-     *
-     * @Author: shiki
-     * @Date: 2020/10/29 下午3:00
-     */
-    final static Function<Statement, List<String>> GET_DROP_PK = state -> {
-        try (val resultSet = state.executeQuery(DROP_PK)) {
-            final List<String> pk = new ArrayList<>();
-            while (resultSet.next()) {
-                pk.add(resultSet.getString(DEL_PK));
-            }
-            return pk;
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return Collections.emptyList();
-    };
-
-    /**
      * 计算全部表的列总数
      *
      * @Author: shiki
@@ -158,13 +188,46 @@ public class LineAllIsEmpty {
     };
 
     /**
-     * 获取数据库更新信息
+     * 根据表名和列名获取表中除了操作信息(创建修改删除等列)之外的全部空列
      *
-     * @return java.util.Map<java.lang.String, io.vavr.Tuple2 < java.lang.String, java.util.List < java.lang.String>>>
+     * @Author: shiki
+     * @Date: 2020/11/2 下午3:13
+     */
+    final static Function3<String, List<String>, Statement, List<String>> EMPTY_COLUMN_COMMENT = (tableName, columnNames, state) -> {
+        List<String> allLineIsEmptyColumnNames = new ArrayList<>(64);
+        StringBuilder sb = new StringBuilder();
+        columnNames.forEach(
+                columnName -> sb
+                        .append(UNION)
+//                        替换条件
+                        .append(TABLE_ALL_LINE_IS_NOT_EMPTY
+                                .replaceAll(DYNAMIC_TABLE_NAME, tableName)
+                                .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
+
+        try (ResultSet resultSet = state.executeQuery(PRE + sb.toString())) {
+            while (resultSet.next()) {
+                final String columnName = resultSet.getString("column_name");
+                if (resultSet.getInt("count") == 0 && !INVALID_COLUMN.contains(columnName)) {
+                    allLineIsEmptyColumnNames.add(columnName);
+                }
+            }
+            return allLineIsEmptyColumnNames;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return allLineIsEmptyColumnNames;
+    };
+
+    /**
+     * 获取数据库更新信息
+     * <p>
+     * tuple2在此返回值中作为简单键值对表示形式 ._1表示key, ._2表示值
+     * 例如   addColumn user_id; 表示数据库中新增一行user_id的列
+     *
      * @Author: shiki
      * @Date: 2020/10/28 下午3:31
      */
-    static public Map<String, Tuple2<String, List<String>>> dbUpdate() {
+    final static Supplier<Map<String, Tuple2<String, List<String>>>> DB_UPDATE = () -> {
         final HashMap<String, Tuple2<String, List<String>>> map = new HashMap<>(4);
         String addTable = "+ table";
         String dropTable = "- table";
@@ -193,7 +256,26 @@ public class LineAllIsEmpty {
                     }
                 });
         return map;
-    }
+    };
+
+    /**
+     * 输出全部的空字段注释变更sql并保存到本地
+     *
+     * @Author: shiki
+     * @Date: 2020/11/2 下午3:57
+     */
+    final static Consumer<String> PRINTF_MODIFY_EMPTY_COLUMN_COMMENT = str -> {
+        try (PrintStream ps = new PrintStream(str)) {
+            final List<String> tableNames = conn(GET_VALID_TABLE_NAME).orElseGet(Collections::emptyList);
+            tableNames.forEach(tableName -> {
+                        List<String> columnNames = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(Collections::emptyList);
+                        conn(EMPTY_COLUMN_COMMENT.apply(tableName, columnNames)).filter(list -> list.size() > 0).ifPresent(ps::println);
+                    }
+            );
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+    };
 
     /**
      * 整个流程的入口和出口
@@ -205,7 +287,7 @@ public class LineAllIsEmpty {
     static Map<String, List<String>> lineAllIsEmpty() {
         try (Connection connection = JdbcUtil.getConnection();
              Statement statement = connection.createStatement()) {
-            final List<String> tableNames = getAllTableName(statement);
+            final List<String> tableNames = conn(GET_VALID_TABLE_NAME).orElseGet(Collections::emptyList);
             System.out.println("tableName.size() = " + tableNames.size());
             System.out.println(tableNames);
             final Stream<Map<String, List<String>>> stream = tableNames.stream()
@@ -231,37 +313,7 @@ public class LineAllIsEmpty {
     }
 
     /**
-     * 获取数据库的全部表名
-     *
-     * @param statement:
-     * @return java.util.List<java.lang.String> 表名集合
-     * @Author: shiki
-     * @Date: 2020/10/27 下午4:56
-     */
-    static List<String> getAllTableName(Statement statement) {
-        List<String> tableNames = new ArrayList<>(256);
-        try (ResultSet resultSet = statement.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
-             PrintStream delTable = new PrintStream(new File(DEL_TABLE))
-        ) {
-//            删除表之前先清空外键
-            conn(GET_DROP_PK).orElseGet(ArrayList::new).forEach(delTable::println);
-            while (resultSet.next()) {
-                String tableName = resultSet.getString("table_name");
-                final String tableComment = resultSet.getString("table_comment");
-                if (!tableComment.startsWith("-无效表") && !INVALID_TABLES.contains(tableName)) {
-                    tableNames.add(tableName);
-                } else if (tableComment.startsWith("-无效表")) {
-                    delTable.println(DROP_TABLE + tableName + ";");
-                }
-            }
-        } catch (SQLException | FileNotFoundException e) {
-            e.printStackTrace();
-        }
-        return tableNames;
-    }
-
-    /**
-     * 根据表明获取全部列
+     * 根据表名获取全部列
      *
      * @param statement: 见jdbc文档
      * @param tableName: 根据表名获取全部列
@@ -394,6 +446,16 @@ public class LineAllIsEmpty {
     }
 
     /**
+     * 输出空字段
+     *
+     * @Author: shiki
+     * @Date: 2020/11/2 下午3:49
+     */
+    static void outEmptyColumn() {
+        PRINTF_MODIFY_EMPTY_COLUMN_COMMENT.accept(MODIFY_EMPTY_COLUMN_COMMENT);
+    }
+
+    /**
      * 输出新旧库字段变化文件
      *
      * @Author: shiki
@@ -401,7 +463,7 @@ public class LineAllIsEmpty {
      */
     static void outUpdate() {
         try (final PrintStream modify = new PrintStream(new File(MODIFY_PATH))) {
-            dbUpdate().forEach((k, v) -> modify.println(k + "  " + v));
+            DB_UPDATE.get().forEach((k, v) -> modify.println(k + "  " + v));
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
@@ -440,9 +502,10 @@ public class LineAllIsEmpty {
 
     public static void main(String[] args) {
         final long start = currentTimeMillis();
-//        EXECUTOR.submit(empty::outUpdate);
-//        EXECUTOR.submit(empty::outTableFilterSql);
-        getAllTableColumn();
+        EXECUTOR.submit(LineAllIsEmpty::outUpdate);
+        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
+        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
+        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
 
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");

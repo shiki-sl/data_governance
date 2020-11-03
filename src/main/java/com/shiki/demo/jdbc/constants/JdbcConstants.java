@@ -58,12 +58,13 @@ public interface JdbcConstants {
             "delete_flag",
             "delete_user_id",
             "delete_user_name",
-            "order_code",
-            "attribute1",
-            "attribute2",
-            "attribute3",
-            "attribute4",
-            "attribute5");
+            "order_code"
+//            , "attribute1",
+//            "attribute2",
+//            "attribute3",
+//            "attribute4",
+//            "attribute5"
+    );
 
     /**
      * 排除表
