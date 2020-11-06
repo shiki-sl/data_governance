@@ -1,7 +1,5 @@
 package com.shiki.demo.jdbc;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import com.google.common.collect.Sets;
 import com.shiki.demo.jdbc.config.DBPool;
 import com.shiki.demo.jdbc.config.JdbcUtil;
@@ -15,7 +13,10 @@ import org.springframework.util.ObjectUtils;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -35,13 +36,13 @@ import static java.util.stream.Collectors.*;
  * <p>
  * {@link #main(String[]) 入口}
  * <p>
- * @see #findAny 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
+ * @see #FIND_ANY 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
  * <p>
- * @see #ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成四个独立文件,修改请见{@link #UPDATE_SQL_PATH},
+ * @see #ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成独立文件,修改请见{@link #UPDATE_SQL_PATH},
  * {@link #DEL_COLUMN_PATH},{@link #EMPTY_COLUMN_PATH},{@link #MODIFY_PATH} 独立文件详情见{@link #ROOT_PATH} 上方字段注释
  * {@link #DEL_TABLE}
  * <p>
- * @see #oldDB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
+ * @see #OLD_DB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
  */
 public class LineAllIsEmpty {
 
@@ -52,10 +53,29 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/10/27 下午5:44
      */
-    final static boolean findAny = false;
+    final static boolean FIND_ANY = false;
 
-    static String oldDB = "ccxi_crc_proj";
+    /**
+     * 就表名
+     *
+     * @Author: shiki
+     * @Date: 2020/11/5 下午3:40
+     */
+    static final String OLD_DB = "ccxi_crc_proj";
 
+    /**
+     * 需要排除的字段
+     *
+     * @Author: shiki
+     * @Date: 2020/11/5 下午3:39
+     */
+    static final List<String> OTHER = Arrays.asList("create_user_id", "create_user_name", "create_time", "usable_status");
+
+//    final static Map<String, Collection<String>> MAP = new HashMap<String, Collection<String>>() {{
+//        this.put("business_zpthree_check", Collections.singletonList("create_time"));
+//        this.put("business_meeting_project", Collections.singletonList("create_time"));
+//        this.put("business_meeting_record", Collections.singletonList("usable_status"));
+//    }};
     /**
      * 文件输出位置
      * update_sql_path 添加json,初始化json,赋值json
@@ -233,10 +253,10 @@ public class LineAllIsEmpty {
         String dropTable = "- table";
         String addColumn = "添加 column";
         String dropColumn = "删除 column";
-        final Tuple2<List<String>, List<String>> tuple2 = conn(GET_ALL_TABLE_NAME.apply(DBPool.db)).orElseThrow(RuntimeException::new);
+        val tuple2 = conn(GET_ALL_TABLE_NAME.apply(DBPool.db)).orElseThrow(RuntimeException::new);
         final List<String> newTable = tuple2._1;
-        final List<String> oldTable = conn(GET_ALL_TABLE_NAME.apply(oldDB)).orElseThrow(RuntimeException::new)._1;
-        final Sets.SetView<String> addTables = Sets.difference(new HashSet<>(newTable), new HashSet<>(oldTable));
+        final List<String> oldTable = conn(GET_ALL_TABLE_NAME.apply(OLD_DB)).orElseThrow(RuntimeException::new)._1;
+        final var addTables = Sets.difference(new HashSet<>(newTable), new HashSet<>(oldTable));
         map.put(addTable, new Tuple2<>("添加表", new ArrayList<>(addTables)));
 
         final Sets.SetView<String> dropTables = Sets.difference(new HashSet<>(oldTable), new HashSet<>(newTable));
@@ -245,7 +265,7 @@ public class LineAllIsEmpty {
         Sets.intersection(new HashSet<>(oldTable), new HashSet<>(newTable))
                 .forEach(tableName -> {
                     final List<String> oldColumn = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(ArrayList::new).stream().map(String::toLowerCase).collect(toList());
-                    final List<String> newColumn = conn(GET_ALL_COLUMN.apply(tableName, oldDB)).orElseGet(ArrayList::new).stream().map(String::toLowerCase).collect(toList());
+                    final List<String> newColumn = conn(GET_ALL_COLUMN.apply(tableName, OLD_DB)).orElseGet(ArrayList::new).stream().map(String::toLowerCase).collect(toList());
                     final List<String> add = newColumn.stream().filter(column -> !oldColumn.contains(column)).collect(toList());
                     if (add.size() > 0) {
                         map.put(tableName, new Tuple2<>(addColumn, add));
@@ -294,7 +314,7 @@ public class LineAllIsEmpty {
                     .map(tableName -> getTableAllLine(statement, tableName))
                     .filter(map -> map.size() > 0);
             final Map<String, List<String>> maps;
-            if (findAny) {
+            if (FIND_ANY) {
 //                单表测试
                 maps = stream.findAny().orElseGet(HashMap::new);
             } else {
@@ -414,6 +434,10 @@ public class LineAllIsEmpty {
                 updateSql.println(String.format(UPDATE_SET, k) + addJson + ";");
 //            原字段删除
                 final String drop = v.stream()
+//                        删除的sql中需要保留的字段
+                        .filter(str -> !OTHER.contains(str))
+//                        删除的sql需要保留的字段
+//                        .filter(str -> !MAP.containsKey(k) || !MAP.get(k).contains(str))
                         .map(str -> String.format(DROP, str))
                         .collect(joining(","))
                         .replaceAll("\\[", "").replaceAll("]", "");

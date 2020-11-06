@@ -92,7 +92,7 @@ public interface JdbcConstants {
      */
     String DEL_PK = "del_pk";
 
-    String NEW_DB = "ccxi_crc_proj_new";
+    String NEW_DB = "ccxi_crc_proj_clear";
 
     /**
      * 删除全部外键
@@ -184,7 +184,6 @@ public interface JdbcConstants {
             "                     group by dynamic_column_name\n" +
             "                     having dynamic_column_name is not null\n" +
             "                        and dynamic_column_name <> ''\n" +
-            "                        and count(1) > 0\n" +
             "                        and count(*) <> 0\n" +
             "                 ) as line\n" +
             "            where count > 0 ";
