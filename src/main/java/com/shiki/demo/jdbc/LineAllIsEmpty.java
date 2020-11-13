@@ -10,9 +10,7 @@ import lombok.val;
 import lombok.var;
 import org.springframework.util.ObjectUtils;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.PrintStream;
+import java.io.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -21,6 +19,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static com.shiki.demo.jdbc.constants.JdbcConstants.*;
@@ -78,14 +77,18 @@ public class LineAllIsEmpty {
 //    }};
     /**
      * 文件输出位置
-     * update_sql_path 添加json,初始化json,赋值json
-     * del_column_path删除源字段
-     * empty_column_path 空字段列表集合
-     * modify_path 新旧库的字段变化
-     * del_table 不需要的表
      *
      * @Author: shiki
      * @Date: 2020/10/27 下午5:40
+     * @see #ROOT_PATH 输出根目录
+     * @see #UPDATE_SQL_PATH 添加json,初始化json,赋值json
+     * @see #DEL_COLUMN_PATH 删除源字段
+     * @see #EMPTY_COLUMN_PATH 空字段列表集合
+     * @see #MODIFY_PATH 新旧库的字段变化
+     * @see #DEL_TABLE 不需要的表
+     * @see #modify_TABLE 修改的表
+     * @see #TABLE_COUNT_COLUMN 所有表的行数
+     * @see #MODIFY_EMPTY_COLUMN_COMMENT 表中的空字段
      */
     static final String ROOT_PATH = "/home/shiki/code/output/";
     static final String UPDATE_SQL_PATH = ROOT_PATH + "update_sql.sql";
@@ -93,8 +96,34 @@ public class LineAllIsEmpty {
     static final String EMPTY_COLUMN_PATH = ROOT_PATH + "empty_column";
     static final String MODIFY_PATH = ROOT_PATH + "modify";
     static final String DEL_TABLE = ROOT_PATH + "del_table.sql";
+    static final String modify_TABLE = ROOT_PATH + "modify_table";
     static final String TABLE_COUNT_COLUMN = ROOT_PATH + "count_column.txt";
-    static final String MODIFY_EMPTY_COLUMN_COMMENT = ROOT_PATH + "modify_empty_column_comment.sql";
+    static final String MODIFY_EMPTY_COLUMN_COMMENT = ROOT_PATH + "modify_empty_column_comment";
+
+    static final List<String> last_table = new ArrayList<>();
+
+    /*
+     * 取出上次删除的表
+     * @Author: shiki
+     * @Date: 2020/11/13 下午3:42
+     */
+    static {
+        final Pattern compile = Pattern.compile(DROP_TABLE);
+        final File file = new File(DEL_TABLE);
+        if (file.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                String str;
+                while ((str = reader.readLine()) != null) {
+                    if (str.startsWith("drop")) {
+                        last_table.add(compile.matcher(str).replaceAll(""));
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        last_table.forEach(System.out::println);
+    }
 
     /**
      * 取得全部表名
@@ -150,7 +179,8 @@ public class LineAllIsEmpty {
     final static Function<Statement, List<String>> GET_VALID_TABLE_NAME = state -> {
         List<String> tableNames = new ArrayList<>(256);
         try (ResultSet resultSet = state.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
-             PrintStream delTable = new PrintStream(new File(DEL_TABLE))
+             PrintStream delTable = new PrintStream(new File(DEL_TABLE));
+             PrintStream excludeTable = new PrintStream(new File(modify_TABLE))
         ) {
 //            删除表之前先清空外键
             conn(GET_DROP_PK).orElseGet(ArrayList::new).forEach(delTable::println);
@@ -161,6 +191,7 @@ public class LineAllIsEmpty {
                     tableNames.add(tableName);
                 } else if (tableComment.startsWith("-无效表")) {
                     delTable.println(DROP_TABLE + tableName + ";");
+                    excludeTable.println(tableName);
                 }
             }
         } catch (SQLException | FileNotFoundException e) {
@@ -233,6 +264,7 @@ public class LineAllIsEmpty {
             }
             return allLineIsEmptyColumnNames;
         } catch (SQLException e) {
+            System.out.println(PRE + sb.toString());
             e.printStackTrace();
         }
         return allLineIsEmptyColumnNames;

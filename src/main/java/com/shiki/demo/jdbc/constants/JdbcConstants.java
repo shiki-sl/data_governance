@@ -177,16 +177,7 @@ public interface JdbcConstants {
      * @Author: shiki
      * @Date: 2020/10/27 上午10:57
      */
-    String TABLE_ALL_LINE_IS_NOT_EMPTY = " select 'dynamic_column_name',count(1)\n" +
-            "            from (\n" +
-            "                     select count(1) as count\n" +
-            "                     from dynamic_table_name\n" +
-            "                     group by dynamic_column_name\n" +
-            "                     having dynamic_column_name is not null\n" +
-            "                        and dynamic_column_name <> ''\n" +
-            "                        and count(*) <> 0\n" +
-            "                 ) as line\n" +
-            "            where count > 0 ";
+    String TABLE_ALL_LINE_IS_NOT_EMPTY = " select 'dynamic_column_name', exists(select 1 from dynamic_table_name where dynamic_column_name is not null and dynamic_column_name != '') 'count' ";
 
     /**
      * 联表查询关键字
