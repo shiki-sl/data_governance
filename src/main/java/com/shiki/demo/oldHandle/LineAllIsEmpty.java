@@ -1,6 +1,7 @@
-package com.shiki.demo.jdbc;
+package com.shiki.demo.oldHandle;
 
 import com.google.common.collect.Sets;
+import com.shiki.demo.constants.BaseConstants;
 import com.shiki.demo.jdbc.config.DBPool;
 import com.shiki.demo.jdbc.config.JdbcUtil;
 import io.vavr.Function2;
@@ -22,7 +23,8 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import static com.shiki.demo.jdbc.constants.JdbcConstants.*;
+import static com.shiki.demo.constants.BaseConstants.*;
+import static com.shiki.demo.constants.OldHandleConstants.*;
 import static java.lang.System.currentTimeMillis;
 import static java.util.stream.Collectors.*;
 
@@ -31,14 +33,14 @@ import static java.util.stream.Collectors.*;
  * @description: 全部列为空的数据
  * @Date 2020/10/26 下午2:54
  * <p>
- * 不需要进行操作和修改的常量位于{@link com.shiki.demo.jdbc.constants.JdbcConstants}中
+ * 不需要进行操作和修改的常量位于{@link BaseConstants}中
  * <p>
  * {@link #main(String[]) 入口}
  * <p>
  * @see #FIND_ANY 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
  * <p>
- * @see #ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成独立文件,修改请见{@link #UPDATE_SQL_PATH},
- * {@link #DEL_COLUMN_PATH},{@link #EMPTY_COLUMN_PATH},{@link #MODIFY_PATH} 独立文件详情见{@link #ROOT_PATH} 上方字段注释
+ * @see BaseConstants#ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成独立文件,修改请见{@link #UPDATE_SQL_PATH},
+ * {@link #DEL_COLUMN_PATH},{@link #EMPTY_COLUMN_PATH},{@link #MODIFY_PATH} 独立文件详情见{@link BaseConstants#ROOT_PATH} 上方字段注释
  * {@link #DEL_TABLE}
  * <p>
  * @see #OLD_DB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
@@ -70,17 +72,9 @@ public class LineAllIsEmpty {
      */
     static final List<String> OTHER = Arrays.asList("create_user_id", "create_user_name", "create_time", "usable_status");
 
-//    final static Map<String, Collection<String>> MAP = new HashMap<String, Collection<String>>() {{
-//        this.put("business_zpthree_check", Collections.singletonList("create_time"));
-//        this.put("business_meeting_project", Collections.singletonList("create_time"));
-//        this.put("business_meeting_record", Collections.singletonList("usable_status"));
-//    }};
     /**
-     * 文件输出位置
-     *
      * @Author: shiki
-     * @Date: 2020/10/27 下午5:40
-     * @see #ROOT_PATH 输出根目录
+     * @Date: 2020/11/16 下午2:35
      * @see #UPDATE_SQL_PATH 添加json,初始化json,赋值json
      * @see #DEL_COLUMN_PATH 删除源字段
      * @see #EMPTY_COLUMN_PATH 空字段列表集合
@@ -90,7 +84,6 @@ public class LineAllIsEmpty {
      * @see #TABLE_COUNT_COLUMN 所有表的行数
      * @see #MODIFY_EMPTY_COLUMN_COMMENT 表中的空字段
      */
-    static final String ROOT_PATH = "/home/shiki/code/output/";
     static final String UPDATE_SQL_PATH = ROOT_PATH + "update_sql.sql";
     static final String DEL_COLUMN_PATH = ROOT_PATH + "del_column.sql";
     static final String EMPTY_COLUMN_PATH = ROOT_PATH + "empty_column";

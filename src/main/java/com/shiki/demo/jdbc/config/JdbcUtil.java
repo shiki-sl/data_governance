@@ -13,7 +13,7 @@ public class JdbcUtil {
     /**
      * 数据库连接池
      */
-    private static final DBPool CONN_POOL = new DBPool();
+    private static final DBPool CONN_POOL = new DBPool(null);
 
     /**
      * 从池中获取一个连接
