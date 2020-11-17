@@ -39,9 +39,9 @@ import static java.util.stream.Collectors.*;
  * <p>
  * @see #FIND_ANY 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
  * <p>
- * @see BaseConstants#ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成独立文件,修改请见{@link #UPDATE_SQL_PATH},
- * {@link #DEL_COLUMN_PATH},{@link #EMPTY_COLUMN_PATH},{@link #MODIFY_PATH} 独立文件详情见{@link BaseConstants#ROOT_PATH} 上方字段注释
- * {@link #DEL_TABLE}
+ * @see BaseConstants#ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成独立文件,修改请见{@link #_1_COPY_INVALID_COLUMN_TO_JSON},
+ * {@link #_2_DEL_INVALID_COLUMN},{@link #EMPTY_COLUMN_PATH},{@link #MODIFY_PATH} 独立文件详情见{@link BaseConstants#ROOT_PATH} 上方字段注释
+ * {@link #_1_DEL_INVALID_TABLE}
  * <p>
  * @see #OLD_DB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
  */
@@ -75,20 +75,22 @@ public class LineAllIsEmpty {
     /**
      * @Author: shiki
      * @Date: 2020/11/16 下午2:35
-     * @see #UPDATE_SQL_PATH 添加json,初始化json,赋值json
-     * @see #DEL_COLUMN_PATH 删除源字段
+     * @see #_1_COPY_INVALID_COLUMN_TO_JSON 添加json,初始化json,赋值json
+     * @see #_2_DEL_INVALID_COLUMN 删除源字段
      * @see #EMPTY_COLUMN_PATH 空字段列表集合
      * @see #MODIFY_PATH 新旧库的字段变化
-     * @see #DEL_TABLE 不需要的表
+     * @see #_1_DEL_INVALID_TABLE 不需要的表
      * @see #modify_TABLE 修改的表
      * @see #TABLE_COUNT_COLUMN 所有表的行数
      * @see #MODIFY_EMPTY_COLUMN_COMMENT 表中的空字段
      */
-    static final String UPDATE_SQL_PATH = ROOT_PATH + "update_sql.sql";
-    static final String DEL_COLUMN_PATH = ROOT_PATH + "del_column.sql";
+
+    static final String _1_COPY_INVALID_COLUMN_TO_JSON = OLD_CLEAR + "1_copy_invalid_column_to_json.sql";
+    static final String _1_DEL_INVALID_TABLE = CLEAR_DEV + "1_del_invalid_table.sql";
+    static final String _2_DEL_INVALID_COLUMN = CLEAR_DEV + "2_del_invalid_column.sql";
+
     static final String EMPTY_COLUMN_PATH = ROOT_PATH + "empty_column";
     static final String MODIFY_PATH = ROOT_PATH + "modify";
-    static final String DEL_TABLE = ROOT_PATH + "del_table.sql";
     static final String modify_TABLE = ROOT_PATH + "modify_table";
     static final String TABLE_COUNT_COLUMN = ROOT_PATH + "count_column.txt";
     static final String MODIFY_EMPTY_COLUMN_COMMENT = ROOT_PATH + "modify_empty_column_comment";
@@ -102,7 +104,7 @@ public class LineAllIsEmpty {
      */
     static {
         final Pattern compile = Pattern.compile(DROP_TABLE);
-        final File file = new File(DEL_TABLE);
+        final File file = new File(_1_DEL_INVALID_TABLE);
         if (file.exists()) {
             try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                 String str;
@@ -172,7 +174,7 @@ public class LineAllIsEmpty {
     final static Function<Statement, List<String>> GET_VALID_TABLE_NAME = state -> {
         List<String> tableNames = new ArrayList<>(256);
         try (ResultSet resultSet = state.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
-             PrintStream delTable = new PrintStream(new File(DEL_TABLE));
+             PrintStream delTable = new PrintStream(new File(_1_DEL_INVALID_TABLE));
              PrintStream excludeTable = new PrintStream(new File(modify_TABLE))
         ) {
 //            删除表之前先清空外键
@@ -444,8 +446,8 @@ public class LineAllIsEmpty {
     static void outTableFilterSql() {
         final Map<String, List<String>> maps = lineAllIsEmpty();
 //        尝试设置输出位置,生成文件
-        try (final PrintStream updateSql = new PrintStream(new File(UPDATE_SQL_PATH));
-             final PrintStream dropSql = new PrintStream(new File(DEL_COLUMN_PATH));
+        try (final PrintStream updateSql = new PrintStream(new File(_1_COPY_INVALID_COLUMN_TO_JSON));
+             final PrintStream dropSql = new PrintStream(new File(_2_DEL_INVALID_COLUMN));
              final PrintStream emptyColumn = new PrintStream(new File(EMPTY_COLUMN_PATH))) {
             maps.forEach((k, v) -> {
                 final String infoDetail = "history";

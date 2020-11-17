@@ -72,7 +72,7 @@ public interface OldHandleConstants extends BaseConstants {
      */
     String DEL_PK = "del_pk";
 
-    String NEW_DB = "ccxi_crc_proj_clear";
+    String NEW_DB = "ccxi_crc_proj_dev";
 
     /**
      * 删除全部外键
@@ -81,7 +81,7 @@ public interface OldHandleConstants extends BaseConstants {
      * @Date: 2020/10/28 下午8:10
      */
     String DROP_PK = " select\n " +
-            " concat( 'alter table ', '" + NEW_DB + "', '.', table_name, ' drop foreign key ', constraint_name, ';' ) as " + DEL_PK + "\n " +
+            " concat( 'alter table ', table_name, ' drop foreign key ', constraint_name, ';' ) as " + DEL_PK + "\n " +
             " from\n " +
             " information_schema.table_constraints \n " +
             " where\n " +

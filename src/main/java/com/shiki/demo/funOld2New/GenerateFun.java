@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static com.shiki.demo.constants.BaseConstants.ROOT_PATH;
+import static com.shiki.demo.constants.BaseConstants.*;
 import static java.util.stream.Collectors.*;
 
 /**
@@ -30,21 +30,24 @@ public class GenerateFun {
      * @Author: shiki
      * @Date: 2020/11/16 下午2:38
      */
-    static final String CLEAR_ADD_COLUMN = ROOT_PATH + "clear_add_column.sql";
+    static final String CLEAR_ADD_COLUMN = OLD_CLEAR + "3_add_column_to_change_type.sql";
     /**
      * clear库到dev删除的字段
      *
      * @Author: shiki
      * @Date: 2020/11/16 下午2:38
      */
-    static final String CLEAR_DEL_COLUMN = ROOT_PATH + "dev_del_column.sql";
+    static final String CLEAR_DEL_COLUMN = CLEAR_DEV + "3_del_rename_old_column.sql";
     /**
      * 临时变量重命名
      *
      * @Author: shiki
      * @Date: 2020/11/17 上午10:23
      */
-    private static final String CLEAR_MODIFY_COLUMN = ROOT_PATH + "dev_modify_column.sql";
+    private static final String CLEAR_MODIFY_COLUMN = CLEAR_DEV + "4_rename_swap_column.sql";
+
+    private static final String _6_COPY_RENAME_COLUMN_TO_JSON = OLD_CLEAR + "6_copy_rename_column_to_json.sql";
+
 
     static Function<BufferedReader, List<String>> getAllSqlByMd = reader -> {
         final List<String> list = new ArrayList<>();
@@ -135,8 +138,8 @@ public class GenerateFun {
             final LinkedList<String> setList = new LinkedList<>();
             final List<String> delList = new LinkedList<>();
             map.forEach((tableName, columnNames) -> {
-                addList.add("ALTER TABLE `ccxi_crc_proj_clear`." + tableName);
-                modifyList.add("ALTER TABLE `ccxi_crc_proj_clear`." + tableName);
+                addList.add("ALTER TABLE " + tableName);
+                modifyList.add("ALTER TABLE " + tableName);
                 final var columnMaps = columnNames.stream().collect(groupingBy(Entity::getClass));
                 columnMaps.getOrDefault(ChangeColumn.class, new ArrayList<>()).forEach(c -> {
                     final ChangeColumn column = (ChangeColumn) c;
@@ -202,7 +205,7 @@ public class GenerateFun {
             return columnGroupingByTableName;
         });
 //    UPDATE `business_transfer_path` SET history=JSON_SET(history, "$.usable_status", usable_status) ,history=JSON_SET(history, "$.create_time", create_time);
-        Fun.out(ROOT_PATH + "del_column_backup_2_json.sql",
+        Fun.out(_6_COPY_RENAME_COLUMN_TO_JSON,
                 out -> map.forEach((k, v) -> {
                     out.print("UPDATE " + k + " SET ");
                     final String collect = v.stream()
