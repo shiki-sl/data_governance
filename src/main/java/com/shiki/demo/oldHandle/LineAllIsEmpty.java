@@ -468,9 +468,9 @@ public class LineAllIsEmpty {
                         .replaceAll("\\[", "").replaceAll("]", "");
                 dropSql.println(String.format(ALTER_TABLE, k) + drop + ";");
                 final List<String> list = leftIntersection(v);
-                if (list.size() > 0) {
-                    emptyColumn.println(k + "    " + list);
-                }
+//                if (list.size() > 0) {
+//                    emptyColumn.println(k + "    " + list);
+//                }
             });
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -553,8 +553,8 @@ public class LineAllIsEmpty {
         final long start = currentTimeMillis();
         EXECUTOR.submit(LineAllIsEmpty::outUpdate);
         EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
-        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
-        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
+//        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
+//        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
 
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");

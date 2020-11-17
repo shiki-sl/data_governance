@@ -1,5 +1,6 @@
 package com.shiki.demo.funOld2New;
 
+import com.shiki.demo.fun.Fun;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,10 +10,11 @@ import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static com.shiki.demo.constants.BaseConstants.ROOT_PATH;
-import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.*;
 
 /**
  * @Author shiki
@@ -20,6 +22,7 @@ import static java.util.stream.Collectors.groupingBy;
  * @Date 2020/11/13 下午5:13
  */
 public class GenerateFun {
+    final static Pattern mysqlSemicolon = Pattern.compile("`");
 
     /**
      * 原库到clear库新增的字段
@@ -43,6 +46,28 @@ public class GenerateFun {
      */
     private static final String CLEAR_MODIFY_COLUMN = ROOT_PATH + "dev_modify_column.sql";
 
+    static Function<BufferedReader, List<String>> getAllSqlByMd = reader -> {
+        final List<String> list = new ArrayList<>();
+        String str;
+//        解析md文件中的代码
+        boolean start;
+        try {
+            start = "```".equalsIgnoreCase(reader.readLine());
+            while ((str = reader.readLine()) != null) {
+                if (str.equalsIgnoreCase("```")) {
+                    start = !start;
+                    continue;
+                }
+                if (start) {
+                    list.add(str);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return list;
+    };
+
     /**
      * 读取resource文件下面的update_db文件中的全部code,要求其中代码部分全部是sql代码
      *
@@ -50,32 +75,19 @@ public class GenerateFun {
      * @Author: shiki
      * @Date: 2020/11/16 上午11:26
      */
-    static List<String> getAllSqlByMd() {
-        final List<String> list = new ArrayList<>();
+    static <T> T getFile(String fileName, Function<BufferedReader, T> fun) {
         URI resource;
         try {
-            resource = Objects.requireNonNull(GenerateFun.class.getClassLoader().getResource("update_db")).toURI();
+            resource = Objects.requireNonNull(GenerateFun.class.getClassLoader().getResource(fileName)).toURI();
             try (BufferedReader reader = new BufferedReader(new FileReader(new File(resource)))) {
-                String str;
-//                解析md文件中的代码
-                boolean start = "```".equalsIgnoreCase(reader.readLine());
-                while ((str = reader.readLine()) != null) {
-                    if (str.equalsIgnoreCase("```")) {
-                        start = !start;
-                        continue;
-                    }
-                    if (start) {
-                        list.add(str);
-                    }
-                }
-                return list;
+                return fun.apply(reader);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         } catch (URISyntaxException e) {
             e.printStackTrace();
         }
-        return Collections.emptyList();
+        throw new RuntimeException("处理失败");
     }
 
     /**
@@ -100,11 +112,11 @@ public class GenerateFun {
             final String[] comments = str.split("'");
             String comment = comments.length > 1 ? comments[1] : "无注释------------------------------";
             if (str.startsWith("CHANGE COLUMN")) {
-                map.computeIfAbsent(tableName, k -> new ArrayList<>()).add(new ChangeColumn(split[2], split[3], split[4], comment));
+                map.computeIfAbsent(tableName, k -> new ArrayList<>()).add(new ChangeColumn(tableName, split[2], split[3], split[4], comment));
             }
 //            MODIFY COLUMN `is_attendance` tinyint(1) NULL DEFAULT NULL COMMENT '是否列席 $RM_YES_NOT=否、是 {0=否,1=是}' AFTER `committee_type`;
             if (str.startsWith("MODIFY COLUMN")) {
-                map.computeIfAbsent(tableName, k -> new ArrayList<>()).add(new ModifyColumn(split[2], split[3], comment));
+                map.computeIfAbsent(tableName, k -> new ArrayList<>()).add(new ModifyColumn(tableName, split[2], split[3], comment));
             }
         }
         return map;
@@ -112,14 +124,15 @@ public class GenerateFun {
 
     //    ALTER TABLE `ccxi_dev`.`base_associated_document`
 //    ADD COLUMN `is_operation_material_swap` tinyint(1) NULL COMMENT '是否运作材料 $RM_YES_NOT=否、是 {0=否,1=是}' AFTER `history`;
-    private static List<String> generatorSqlCode(Map<String, List<Entity>> map) {
+    private static List<ChangeColumn> generatorUpdateSqlCode(Map<String, List<Entity>> map) {
         try (PrintStream add = new PrintStream(new File(CLEAR_ADD_COLUMN));
              PrintStream del = new PrintStream(new File(CLEAR_DEL_COLUMN));
              PrintStream modify = new PrintStream(new File(CLEAR_MODIFY_COLUMN))
         ) {
-            final Pattern compile = Pattern.compile("`");
             final LinkedList<String> addList = new LinkedList<>();
+            final LinkedList<ChangeColumn> setJsonList = new LinkedList<>();
             final LinkedList<String> modifyList = new LinkedList<>();
+            final LinkedList<String> setList = new LinkedList<>();
             final List<String> delList = new LinkedList<>();
             map.forEach((tableName, columnNames) -> {
                 addList.add("ALTER TABLE `ccxi_crc_proj_clear`." + tableName);
@@ -131,14 +144,18 @@ public class GenerateFun {
                     final boolean isBoolean = column.columnType.equalsIgnoreCase("");
                     addList.add("ADD COLUMN " + column.newColumn + " " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 0 " : " NULL COMMENT '" + column.columnComment + "',"));
                     delList.add("alter table " + tableName + " drop column " + column.oldColumn + ";");
+//                    UPDATE `singleton_map_rule` SET new_column=new_table_name
+                    setList.add("UPDATE " + column.tableName + " SET " + column.newColumn + "=" + column.oldColumn + "");
+                    setJsonList.add(column);
                 });
                 columnMaps.getOrDefault(ModifyColumn.class, new ArrayList<>()).forEach(c -> {
                     final ModifyColumn column = (ModifyColumn) c;
 //                    ADD COLUMN `is_operation_material_swap` tinyint(1) NULL COMMENT '是否运作材料 $RM_YES_NOT=否、是 {0=否,1=是}' AFTER `history`;
                     final boolean isBoolean = column.columnType.equalsIgnoreCase("is_valid");
-                    final String oldColumn = compile.matcher(column.oldColumn).replaceAll("");
+                    final String oldColumn = mysqlSemicolon.matcher(column.oldColumn).replaceAll("");
                     addList.add("ADD COLUMN `" + oldColumn + "_swap` " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 1 " : " NULL COMMENT '" + column.columnComment + "',"));
                     delList.add("alter table " + tableName + " drop column " + column.oldColumn + "; \n");
+                    setList.add("UPDATE " + column.tableName + " SET " + oldColumn + "_swap " + "=" + column.oldColumn + "");
 //                    CHANGE COLUMN `is_upload_swap` `is_upload` tinyint(1)  NULL COMMENT '是否下载'
 //                    CHANGE COLUMN `is_interview_swap` `is_interview_swap1` tinyint(1) NULL DEFAULT NULL COMMENT '是否访谈' AFTER `is_negative_swap`;
                     modifyList.add("CHANGE COLUMN `" + oldColumn + "_swap` `" + oldColumn + "` " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 1 " : " NULL COMMENT '" + column.columnComment + "',"));
@@ -152,19 +169,56 @@ public class GenerateFun {
             addList.forEach(add::println);
             modifyList.forEach(modify::println);
             delList.stream().filter(str -> !str.equals(";")).forEach(del::println);
+            setList.forEach(add::println);
             add.println("SET FOREIGN_KEY_CHECKS = 1;");
             del.println("SET FOREIGN_KEY_CHECKS = 1;");
             modify.println("SET FOREIGN_KEY_CHECKS = 1;");
+            return setJsonList;
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
         return null;
     }
 
+    private static void generatorSetJsonSqlCode(List<ChangeColumn> list) {
+        final Map<String, List<String>> columnGroupingByTableName = list.stream()
+                .collect(
+                        groupingBy(ChangeColumn::getTableName,
+                                mapping(ChangeColumn::getOldColumn, toList())
+                        )
+                );
+        final Map<String, List<String>> map = getFile("_del_column.sql", reader -> {
+            String str;
+//            解析sql文件中的代码
+//            alter table `business_meeting` drop column `attribute1`;
+            try {
+                while ((str = reader.readLine()) != null) {
+                    final String[] split = str.split("`");
+                    columnGroupingByTableName.computeIfAbsent(split[1], k -> new ArrayList<>()).add("`" + split[2].trim() + "`");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return columnGroupingByTableName;
+        });
+//    UPDATE `business_transfer_path` SET history=JSON_SET(history, "$.usable_status", usable_status) ,history=JSON_SET(history, "$.create_time", create_time);
+        Fun.out(ROOT_PATH + "del_column_backup_2_json.sql",
+                out -> map.forEach((k, v) -> {
+                    out.print("UPDATE " + k + " SET ");
+                    final String collect = v.stream()
+                            .map(str -> mysqlSemicolon.matcher(str).replaceAll(""))
+                            .map(column -> "history=JSON_SET(history, \"$." + column + "\", " + column + ")")
+                            .collect(joining(","));
+                    out.println(collect + ";");
+                }));
+    }
+
     public static void main(String[] args) {
-        final List<String> list = getAllSqlByMd();
+        final List<String> list = getFile("update_db", getAllSqlByMd);
         final Map<String, List<Entity>> map = getAllChangeColumnBySql(list);
-        generatorSqlCode(map);
+        final List<ChangeColumn> changeColumns = generatorUpdateSqlCode(map);
+        assert changeColumns != null;
+        generatorSetJsonSqlCode(changeColumns);
     }
 
     public interface Entity {
@@ -180,6 +234,7 @@ public class GenerateFun {
     @AllArgsConstructor
     @Data
     public static class ModifyColumn implements Entity {
+        String tableName;
         String oldColumn;
         String columnType;
         String columnComment;
@@ -195,6 +250,7 @@ public class GenerateFun {
     @NoArgsConstructor
     @Data
     public static class ChangeColumn implements Entity {
+        String tableName;
         String oldColumn;
         String newColumn;
         String columnType;
