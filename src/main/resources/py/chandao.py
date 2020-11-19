@@ -6,9 +6,7 @@ import hashlib
 from lxml import html
 import sys
 
-loginUrl = 'http://139.196.55.41:8080/zentao/user-login.html'
-
-def getCookies(username, password):
+def getCookies(username, password,loginUrl):
     loginPage = requests.get(loginUrl)
     loginPage.encoding = 'utf-8'
     SID = loginPage.cookies['zentaosid']

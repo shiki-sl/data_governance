@@ -1,14 +1,20 @@
 package com.shiki.demo.funOld2New;
 
 import com.shiki.demo.fun.Fun;
+import com.shiki.demo.jdbc.config.DBPool;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.var;
+import org.apache.logging.log4j.util.PropertiesUtil;
 
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -22,9 +28,23 @@ import static java.util.stream.Collectors.*;
  * @Date 2020/11/13 下午5:13
  */
 public class GenerateFun {
+
+    static ChanDao initChandao() {
+        final InputStream is = GenerateFun.class.getResourceAsStream("/application.properties");
+        try {
+            Properties prop = new Properties();
+            prop.load(is);
+            return new ChanDao(prop.getProperty("loginUrl"), prop.getProperty("chandao_username"),
+                    prop.getProperty("chandao_password"), prop.getProperty("mdUrl"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        throw new RuntimeException("init exception");
+    }
+
+    final static ChanDao CHAN_DAO = initChandao();
     final static Pattern mysqlSemicolon = Pattern.compile("`");
 
-    final static ChanDao CHAN_DAO = new ChanDao("sunlei", "ccxi123456", "http://139.196.55.41:8080/zentao/doc-edit-20.html");
     /**
      * 原库到clear库新增的字段
      *
@@ -98,7 +118,7 @@ public class GenerateFun {
         Process proc = null;
         try {
             final String path = GenerateFun.class.getClassLoader().getResource("py/chandao.py").getPath();
-            proc = Runtime.getRuntime().exec(new String[]{"python", path, chanDao.username, chanDao.password, chanDao.url});
+            proc = Runtime.getRuntime().exec(new String[]{"python", path, chanDao.username, chanDao.password, chanDao.mdUrl});
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
                 return fun.apply(reader);
             } catch (IOException e) {
@@ -283,8 +303,33 @@ public class GenerateFun {
     @NoArgsConstructor
     @Data
     public static class ChanDao {
+        /**
+         * 禅道登录地址
+         *
+         * @Author: shiki
+         * @Date: 2020/11/19 下午5:34
+         */
+        String loginUrl;
+        /**
+         * 禅道登用户
+         *
+         * @Author: shiki
+         * @Date: 2020/11/19 下午5:34
+         */
         String username;
+        /**
+         * 禅道登录密码
+         *
+         * @Author: shiki
+         * @Date: 2020/11/19 下午5:34
+         */
         String password;
-        String url;
+        /**
+         * md文档爬取url
+         *
+         * @Author: shiki
+         * @Date: 2020/11/19 下午5:35
+         */
+        String mdUrl;
     }
 }
