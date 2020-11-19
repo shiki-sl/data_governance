@@ -24,6 +24,7 @@ import static java.util.stream.Collectors.*;
 public class GenerateFun {
     final static Pattern mysqlSemicolon = Pattern.compile("`");
 
+    final static ChanDao CHAN_DAO = new ChanDao("sunlei", "ccxi123456", "http://139.196.55.41:8080/zentao/doc-edit-20.html");
     /**
      * 原库到clear库新增的字段
      *
@@ -88,6 +89,24 @@ public class GenerateFun {
                 e.printStackTrace();
             }
         } catch (URISyntaxException e) {
+            e.printStackTrace();
+        }
+        throw new RuntimeException("处理失败");
+    }
+
+    static <T> T getNetwork(ChanDao chanDao, Function<BufferedReader, T> fun) {
+        Process proc = null;
+        try {
+            final String path = GenerateFun.class.getClassLoader().getResource("py/chandao.py").getPath();
+            proc = Runtime.getRuntime().exec(new String[]{"python", path, chanDao.username, chanDao.password, chanDao.url});
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+                return fun.apply(reader);
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                proc.waitFor();
+            }
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
         throw new RuntimeException("处理失败");
@@ -217,7 +236,7 @@ public class GenerateFun {
     }
 
     public static void main(String[] args) {
-        final List<String> list = getFile("update_db", getAllSqlByMd);
+        final List<String> list = getNetwork(CHAN_DAO, getAllSqlByMd);
         final Map<String, List<Entity>> map = getAllChangeColumnBySql(list);
         final List<ChangeColumn> changeColumns = generatorUpdateSqlCode(map);
         assert changeColumns != null;
@@ -258,5 +277,14 @@ public class GenerateFun {
         String newColumn;
         String columnType;
         String columnComment;
+    }
+
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Data
+    public static class ChanDao {
+        String username;
+        String password;
+        String url;
     }
 }

@@ -37,6 +37,6 @@ public interface BaseConstants {
      * @see #ROOT_PATH 输出根目录
      */
     String ROOT_PATH = "/home/shiki/code/output/";
-    String OLD_CLEAR = ROOT_PATH+"old_clear/";
-    String CLEAR_DEV = ROOT_PATH+"clear_dev/";
+    String OLD_CLEAR = ROOT_PATH + "old_clear/";
+    String CLEAR_DEV = ROOT_PATH + "clear_dev/";
 }
