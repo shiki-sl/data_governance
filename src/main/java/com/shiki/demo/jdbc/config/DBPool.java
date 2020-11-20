@@ -4,9 +4,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.apache.logging.log4j.util.PropertiesUtil;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.sql.Connection;
@@ -30,18 +32,14 @@ public class DBPool {
         init(config);
     }
 
-    private static void init(DBConfig config) {//如果以jar包运行，此处会报找不到这个文件的异常，解决方案如下。
-        //解决方案需要注释这行代码//InputStream in = PropertiesUtil.class.getClassLoader.getResourceAsStream("db.properties");//开启这行代码解决以上问题
+    private static void init(DBConfig config) {
+        InputStream in = DBPool.class.getResourceAsStream("db.properties");//开启这行代码解决以上问题
         final URL resource = DBPool.class.getClassLoader().getResource("application.properties");
         assert resource != null;
-        String path = resource.getPath();
         String url;
         String user;
         String password;
-        FileInputStream in;//开启以上解决方案需要注释调这行代码
         try {
-            //开启以上解决方案需要注释这行代码
-            in = new FileInputStream(path);
             Properties prop = new Properties();
             prop.load(in);
             String driver = prop.getProperty("driver");

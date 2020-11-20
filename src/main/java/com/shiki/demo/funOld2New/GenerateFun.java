@@ -1,20 +1,15 @@
 package com.shiki.demo.funOld2New;
 
+import com.shiki.demo.constants.BaseConstants;
 import com.shiki.demo.fun.Fun;
-import com.shiki.demo.jdbc.config.DBPool;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.var;
-import org.apache.logging.log4j.util.PropertiesUtil;
 
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -28,6 +23,14 @@ import static java.util.stream.Collectors.*;
  * @Date 2020/11/13 下午5:13
  */
 public class GenerateFun {
+
+    static {
+        init();
+    }
+
+    private static void init() {
+        System.out.println("BaseConstants init is " + isInit);
+    }
 
     static ChanDao initChandao() {
         final InputStream is = GenerateFun.class.getResourceAsStream("/application.properties");
