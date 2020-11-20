@@ -317,6 +317,7 @@ public class LineAllIsEmpty {
             final List<String> tableNames = conn(GET_VALID_TABLE_NAME).orElseGet(Collections::emptyList);
             tableNames.forEach(tableName -> {
                         List<String> columnNames = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(Collections::emptyList);
+                        ps.print(tableName);
                         conn(EMPTY_COLUMN_COMMENT.apply(tableName, columnNames)).filter(list -> list.size() > 0).ifPresent(ps::println);
                     }
             );
@@ -551,9 +552,9 @@ public class LineAllIsEmpty {
 
     public static void main(String[] args) {
         final long start = currentTimeMillis();
-        EXECUTOR.submit(LineAllIsEmpty::outUpdate);
-        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
-        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
+//        EXECUTOR.submit(LineAllIsEmpty::outUpdate);
+//        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
+//        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
         EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
 
         EXECUTOR.shutdown();
