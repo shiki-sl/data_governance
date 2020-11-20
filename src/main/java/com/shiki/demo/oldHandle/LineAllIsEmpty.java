@@ -317,7 +317,7 @@ public class LineAllIsEmpty {
             final List<String> tableNames = conn(GET_VALID_TABLE_NAME).orElseGet(Collections::emptyList);
             tableNames.forEach(tableName -> {
                         List<String> columnNames = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(Collections::emptyList);
-                        ps.print(tableName);
+                        ps.print(tableName+":\r");
                         conn(EMPTY_COLUMN_COMMENT.apply(tableName, columnNames)).filter(list -> list.size() > 0).ifPresent(ps::println);
                     }
             );
