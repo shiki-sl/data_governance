@@ -280,6 +280,7 @@ public class LineAllIsEmpty {
         String dropTable = "- table";
         String addColumn = "添加 column";
         String dropColumn = "删除 column";
+        System.out.println(DBPool.db);
         val tuple2 = conn(GET_ALL_TABLE_NAME.apply(DBPool.db)).orElseThrow(RuntimeException::new);
         final List<String> newTable = tuple2._1;
         final List<String> oldTable = conn(GET_ALL_TABLE_NAME.apply(OLD_DB)).orElseThrow(RuntimeException::new)._1;
@@ -412,14 +413,11 @@ public class LineAllIsEmpty {
         }
         List<String> allLineIsEmptyColumnNames = new ArrayList<>(64);
         StringBuilder sb = new StringBuilder();
-        columnNames
-                .forEach(
-                        columnName -> sb
-                                .append(UNION)
-//                        替换条件
-                                .append(TABLE_ALL_LINE_IS_NOT_EMPTY
-                                        .replaceAll(DYNAMIC_TABLE_NAME, tableName)
-                                        .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
+        columnNames.forEach(columnName -> sb
+                .append(UNION).append(TABLE_ALL_LINE_IS_NOT_EMPTY
+//                                替换条件
+                        .replaceAll(DYNAMIC_TABLE_NAME, tableName)
+                        .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
 
         try (ResultSet resultSet = statement.executeQuery(PRE + sb.toString())) {
             while (resultSet.next()) {
@@ -554,7 +552,7 @@ public class LineAllIsEmpty {
     public static void main(String[] args) {
         final long start = currentTimeMillis();
         EXECUTOR.submit(LineAllIsEmpty::outUpdate);
-        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
+//        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
 //        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
 //        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
 

@@ -27,43 +27,48 @@ public class DBPool {
     private static final LinkedList<Connection> CONN_POOL = new LinkedList<>();
 
     public static String db;
+    private static String url;
+    private static String user;
+    private static String password;
+    private static final Properties prop;
+
+    static {
+        InputStream in = DBPool.class.getResourceAsStream("/application.properties");
+        prop = new Properties();
+        try {
+            prop.load(in);
+            url = prop.getProperty("url");
+            db = prop.getProperty("db");
+            user = prop.getProperty("user");
+            password = prop.getProperty("password");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     public DBPool(DBConfig config) {
         init(config);
     }
 
     private static void init(DBConfig config) {
-        InputStream in = DBPool.class.getResourceAsStream("/application.properties");
-        String url;
-        String user;
-        String password;
-        try {
-            Properties prop = new Properties();
-            prop.load(in);
-            String driver = prop.getProperty("driver");
-            if (config == null) {
-                url = prop.getProperty("url");
-                db = prop.getProperty("db");
-                user = prop.getProperty("user");
-                password = prop.getProperty("password");
-            } else {
-                url = config.url;
-                db = config.dbName;
-                user = config.username;
-                password = config.password;
-            }
-            // 数据库连接池的初始化连接数的大小
-            int initSize = Integer.parseInt(prop.getProperty("initSize"));
-            // 加载驱动
-            Class.forName(driver);
-            for (int i = 0; i < initSize; i++) {
+
+        if (config != null) {
+            url = config.url();
+            db = config.dbName();
+            user = config.username();
+            password = config.password();
+        }
+        // 数据库连接池的初始化连接数的大小
+        int initSize = Integer.parseInt(prop.getProperty("initSize"));
+        for (int i = 0; i < initSize; i++) {
+            try {
                 Connection conn = DriverManager.getConnection(url, user, password);
                 // 将创建的连接添加的list中
                 System.out.println("初始化数据库连接池，创建第 " + (i + 1) + " 个连接，添加到池中");
                 CONN_POOL.add(conn);
+            } catch (SQLException e) {
+                e.printStackTrace();
             }
-        } catch (IOException | ClassNotFoundException | SQLException e) {
-            e.printStackTrace();
         }
     }
 
