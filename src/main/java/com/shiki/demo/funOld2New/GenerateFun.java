@@ -1,6 +1,5 @@
 package com.shiki.demo.funOld2New;
 
-import com.shiki.demo.constants.BaseConstants;
 import com.shiki.demo.fun.Fun;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -70,7 +69,7 @@ public class GenerateFun {
      */
     private static final String CLEAR_MODIFY_COLUMN = CLEAR_DEV + "4_rename_swap_column.sql";
 
-    private static final String _6_COPY_RENAME_COLUMN_TO_JSON = OLD_CLEAR + "6_copy_rename_column_to_json.sql";
+    private static final String _5_COPY_RENAME_COLUMN_TO_JSON = OLD_CLEAR + "5_copy_rename_column_to_json.sql";
 
 
     static Function<BufferedReader, List<String>> getAllSqlByMd = reader -> {
@@ -118,16 +117,19 @@ public class GenerateFun {
     }
 
     static <T> T getNetwork(ChanDao chanDao, Function<BufferedReader, T> fun) {
-        Process proc = null;
+        Process proc;
         try {
             final String path = GenerateFun.class.getClassLoader().getResource("py/chandao.py").getPath();
-            proc = Runtime.getRuntime().exec(new String[]{"python", path, chanDao.username, chanDao.password, chanDao.mdUrl});
+            final String[] cmdarray = {"python", path, chanDao.username, chanDao.password, chanDao.loginUrl, chanDao.mdUrl};
+            proc = Runtime.getRuntime().exec(cmdarray);
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
                 return fun.apply(reader);
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
-                proc.waitFor();
+                if (proc.waitFor() != 0) {
+                    throw new RuntimeException("python 执行错误");
+                }
             }
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
@@ -239,7 +241,7 @@ public class GenerateFun {
             try {
                 while ((str = reader.readLine()) != null) {
                     final String[] split = str.split("`");
-                    columnGroupingByTableName.computeIfAbsent(split[1], k -> new ArrayList<>()).add("`" + split[2].trim() + "`");
+                    columnGroupingByTableName.computeIfAbsent(split[1], k -> new ArrayList<>()).add("`" + split[3].trim() + "`");
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -247,7 +249,7 @@ public class GenerateFun {
             return columnGroupingByTableName;
         });
 //    UPDATE `business_transfer_path` SET history=JSON_SET(history, "$.usable_status", usable_status) ,history=JSON_SET(history, "$.create_time", create_time);
-        Fun.out(_6_COPY_RENAME_COLUMN_TO_JSON,
+        Fun.out(_5_COPY_RENAME_COLUMN_TO_JSON,
                 out -> map.forEach((k, v) -> {
                     out.print("UPDATE " + k + " SET ");
                     final String collect = v.stream()

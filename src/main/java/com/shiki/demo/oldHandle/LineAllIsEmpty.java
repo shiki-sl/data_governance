@@ -552,9 +552,9 @@ public class LineAllIsEmpty {
     public static void main(String[] args) {
         final long start = currentTimeMillis();
         EXECUTOR.submit(LineAllIsEmpty::outUpdate);
-//        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
-//        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
-//        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
+        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
+        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
+        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
 
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");
