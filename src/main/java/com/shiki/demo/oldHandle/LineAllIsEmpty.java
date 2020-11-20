@@ -9,7 +9,8 @@ import io.vavr.Function3;
 import io.vavr.Tuple2;
 import lombok.val;
 import lombok.var;
-import org.springframework.util.ObjectUtils;
+import org.apache.commons.lang3.ObjectUtils;
+
 
 import java.io.*;
 import java.sql.Connection;
@@ -317,8 +318,9 @@ public class LineAllIsEmpty {
             final List<String> tableNames = conn(GET_VALID_TABLE_NAME).orElseGet(Collections::emptyList);
             tableNames.forEach(tableName -> {
                         List<String> columnNames = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(Collections::emptyList);
-                        ps.print(tableName+":\t");
-                        conn(EMPTY_COLUMN_COMMENT.apply(tableName, columnNames)).filter(list -> list.size() > 0).ifPresent(ps::println);
+                        conn(EMPTY_COLUMN_COMMENT.apply(tableName, columnNames))
+                                .filter(ObjectUtils::isNotEmpty)
+                                .ifPresent(column -> ps.println(tableName + "\t" + column));
                     }
             );
         } catch (FileNotFoundException e) {
