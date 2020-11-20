@@ -33,9 +33,7 @@ public class DBPool {
     }
 
     private static void init(DBConfig config) {
-        InputStream in = DBPool.class.getResourceAsStream("db.properties");//开启这行代码解决以上问题
-        final URL resource = DBPool.class.getClassLoader().getResource("application.properties");
-        assert resource != null;
+        InputStream in = DBPool.class.getResourceAsStream("/application.properties");
         String url;
         String user;
         String password;
