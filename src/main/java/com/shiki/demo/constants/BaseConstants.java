@@ -44,6 +44,10 @@ public interface BaseConstants {
             if (!clear_dev.exists()) {
                 isInit = isInit && clear_dev.mkdir();
             }
+            final File old_clear_column_update = new File(OLD_CLEAR_COLUMN_UPDATE);
+            if (!old_clear_column_update.exists()) {
+                isInit = isInit && old_clear_column_update.mkdir();
+            }
         }
     }.isInit;
 
@@ -56,6 +60,7 @@ public interface BaseConstants {
      */
     String ROOT_PATH = "/home/shiki/code/output/";
     String OLD_CLEAR = ROOT_PATH + "old_clear/";
+    String OLD_CLEAR_COLUMN_UPDATE = OLD_CLEAR + "old_clear_column_update/";
     String CLEAR_DEV = ROOT_PATH + "clear_dev/";
 
     int C = Runtime.getRuntime().availableProcessors();

@@ -39,4 +39,4 @@ def getUpdateSqlMd(url, cookies):
 
 if __name__ == '__main__':
     cookies = getCookies(sys.argv[1], sys.argv[2],sys.argv[3])
-    print(getUpdateSqlMd(sys.argv[3], cookies))
+    print(getUpdateSqlMd(sys.argv[4], cookies))

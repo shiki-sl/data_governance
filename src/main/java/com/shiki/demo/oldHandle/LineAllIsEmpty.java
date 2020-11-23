@@ -41,7 +41,7 @@ import static java.util.stream.Collectors.*;
  * @see #FIND_ANY 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
  * <p>
  * @see BaseConstants#ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成独立文件,修改请见{@link #_1_COPY_INVALID_COLUMN_TO_JSON},
- * {@link #_2_DEL_INVALID_COLUMN},{@link #EMPTY_COLUMN_PATH},{@link #MODIFY_PATH} 独立文件详情见{@link BaseConstants#ROOT_PATH} 上方字段注释
+ * {@link #_2_DEL_INVALID_COLUMN},{@link #MODIFY_PATH} 独立文件详情见{@link BaseConstants#ROOT_PATH} 上方字段注释
  * {@link #_1_DEL_INVALID_TABLE}
  * <p>
  * @see #OLD_DB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
@@ -78,7 +78,6 @@ public class LineAllIsEmpty {
      * @Date: 2020/11/16 下午2:35
      * @see #_1_COPY_INVALID_COLUMN_TO_JSON 添加json,初始化json,赋值json
      * @see #_2_DEL_INVALID_COLUMN 删除源字段
-     * @see #EMPTY_COLUMN_PATH 空字段列表集合
      * @see #MODIFY_PATH 新旧库的字段变化
      * @see #_1_DEL_INVALID_TABLE 不需要的表
      * @see #modify_TABLE 修改的表
@@ -87,10 +86,10 @@ public class LineAllIsEmpty {
      */
 
     static final String _1_COPY_INVALID_COLUMN_TO_JSON = OLD_CLEAR + "1_copy_invalid_column_to_json.sql";
+    static final String _1_SET_JSON = OLD_CLEAR_COLUMN_UPDATE + "1_set_json.sql";
     static final String _1_DEL_INVALID_TABLE = CLEAR_DEV + "1_del_invalid_table.sql";
     static final String _2_DEL_INVALID_COLUMN = CLEAR_DEV + "2_del_invalid_column.sql";
 
-    static final String EMPTY_COLUMN_PATH = ROOT_PATH + "empty_column";
     static final String MODIFY_PATH = ROOT_PATH + "modify";
     static final String modify_TABLE = ROOT_PATH + "modify_table";
     static final String TABLE_COUNT_COLUMN = ROOT_PATH + "count_column.txt";
@@ -449,31 +448,26 @@ public class LineAllIsEmpty {
 //        尝试设置输出位置,生成文件
         try (final PrintStream updateSql = new PrintStream(new File(_1_COPY_INVALID_COLUMN_TO_JSON));
              final PrintStream dropSql = new PrintStream(new File(_2_DEL_INVALID_COLUMN));
-             final PrintStream emptyColumn = new PrintStream(new File(EMPTY_COLUMN_PATH))) {
+             final PrintStream setJson = new PrintStream(new File(_1_SET_JSON))) {
             maps.forEach((k, v) -> {
                 final String infoDetail = "history";
                 updateSql.printf((ADD_COLUMN) + "%n", k, infoDetail);
-                updateSql.printf((EMPTY_COLUMNS_2_JSON) + "%n", k, infoDetail);
+                setJson.printf((EMPTY_COLUMNS_2_JSON) + "%n", k, infoDetail);
 //            json字段生成
                 final String addJson = v.stream()
                         .map(str -> String.format(JSON_SET, infoDetail, infoDetail, str, str))
                         .collect(joining(","))
                         .replaceAll("\\[", "(").replaceAll("]", ")");
-                updateSql.println(String.format(UPDATE_SET, k) + addJson + ";");
+                setJson.println(String.format(UPDATE_SET, k) + addJson + ";");
 //            原字段删除
                 final String drop = v.stream()
 //                        删除的sql中需要保留的字段
                         .filter(str -> !OTHER.contains(str))
 //                        删除的sql需要保留的字段
-//                        .filter(str -> !MAP.containsKey(k) || !MAP.get(k).contains(str))
                         .map(str -> String.format(DROP, str))
                         .collect(joining(","))
                         .replaceAll("\\[", "").replaceAll("]", "");
                 dropSql.println(String.format(ALTER_TABLE, k) + drop + ";");
-                final List<String> list = leftIntersection(v);
-//                if (list.size() > 0) {
-//                    emptyColumn.println(k + "    " + list);
-//                }
             });
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -555,9 +549,9 @@ public class LineAllIsEmpty {
     public static void main(String[] args) {
         final long start = currentTimeMillis();
 //        EXECUTOR.submit(LineAllIsEmpty::outUpdate);
-//        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
+        EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
 //        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
-        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
+//        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
 
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");

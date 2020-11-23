@@ -55,6 +55,13 @@ public class GenerateFun {
      */
     static final String CLEAR_ADD_COLUMN = OLD_CLEAR + "3_add_column_to_change_type.sql";
     /**
+     * 原库到clear库新增的字段
+     *
+     * @Author: shiki
+     * @Date: 2020/11/16 下午2:38
+     */
+    static final String COLUMN_TYPE_UPDATE_SET_SWAP_COLUMN = OLD_CLEAR_COLUMN_UPDATE + "3_column_type_update_set_swap_column.sql";
+    /**
      * clear库到dev删除的字段
      *
      * @Author: shiki
@@ -68,8 +75,8 @@ public class GenerateFun {
      * @Date: 2020/11/17 上午10:23
      */
     private static final String CLEAR_MODIFY_COLUMN = CLEAR_DEV + "4_rename_swap_column.sql";
-
-    private static final String _5_COPY_RENAME_COLUMN_TO_JSON = OLD_CLEAR + "5_copy_rename_column_to_json.sql";
+    
+    private static final String _2_COPY_RENAME_COLUMN_TO_JSON = OLD_CLEAR_COLUMN_UPDATE + "2_copy_rename_column_to_json.sql";
 
 
     static Function<BufferedReader, List<String>> getAllSqlByMd = reader -> {
@@ -173,6 +180,7 @@ public class GenerateFun {
 //    ADD COLUMN `is_operation_material_swap` tinyint(1) NULL COMMENT '是否运作材料 $RM_YES_NOT=否、是 {0=否,1=是}' AFTER `history`;
     private static List<ChangeColumn> generatorUpdateSqlCode(Map<String, List<Entity>> map) {
         try (PrintStream add = new PrintStream(new File(CLEAR_ADD_COLUMN));
+             PrintStream set = new PrintStream(new File(COLUMN_TYPE_UPDATE_SET_SWAP_COLUMN));
              PrintStream del = new PrintStream(new File(CLEAR_DEL_COLUMN));
              PrintStream modify = new PrintStream(new File(CLEAR_MODIFY_COLUMN))
         ) {
@@ -192,7 +200,7 @@ public class GenerateFun {
                     addList.add("ADD COLUMN " + column.newColumn + " " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 0 " : " NULL COMMENT '" + column.columnComment + "',"));
                     delList.add("alter table " + tableName + " drop column " + column.oldColumn + ";");
 //                    UPDATE `singleton_map_rule` SET new_column=new_table_name
-                    setList.add("UPDATE " + column.tableName + " SET " + column.newColumn + "=" + column.oldColumn + "");
+                    setList.add("UPDATE " + column.tableName + " SET " + column.newColumn + "=" + column.oldColumn + ";");
                     setJsonList.add(column);
                 });
                 columnMaps.getOrDefault(ModifyColumn.class, new ArrayList<>()).forEach(c -> {
@@ -202,7 +210,7 @@ public class GenerateFun {
                     final String oldColumn = mysqlSemicolon.matcher(column.oldColumn).replaceAll("");
                     addList.add("ADD COLUMN `" + oldColumn + "_swap` " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 1 " : " NULL COMMENT '" + column.columnComment + "',"));
                     delList.add("alter table " + tableName + " drop column " + column.oldColumn + "; \n");
-                    setList.add("UPDATE " + column.tableName + " SET " + oldColumn + "_swap " + "=" + column.oldColumn + "");
+                    setList.add("UPDATE " + column.tableName + " SET " + oldColumn + "_swap " + "=" + column.oldColumn + ";");
 //                    CHANGE COLUMN `is_upload_swap` `is_upload` tinyint(1)  NULL COMMENT '是否下载'
 //                    CHANGE COLUMN `is_interview_swap` `is_interview_swap1` tinyint(1) NULL DEFAULT NULL COMMENT '是否访谈' AFTER `is_negative_swap`;
                     modifyList.add("CHANGE COLUMN `" + oldColumn + "_swap` `" + oldColumn + "` " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 1 " : " NULL COMMENT '" + column.columnComment + "',"));
@@ -216,7 +224,7 @@ public class GenerateFun {
             addList.forEach(add::println);
             modifyList.forEach(modify::println);
             delList.stream().filter(str -> !str.equals(";")).forEach(del::println);
-            setList.forEach(add::println);
+            setList.forEach(set::println);
             add.println("SET FOREIGN_KEY_CHECKS = 1;");
             del.println("SET FOREIGN_KEY_CHECKS = 1;");
             modify.println("SET FOREIGN_KEY_CHECKS = 1;");
@@ -249,7 +257,7 @@ public class GenerateFun {
             return columnGroupingByTableName;
         });
 //    UPDATE `business_transfer_path` SET history=JSON_SET(history, "$.usable_status", usable_status) ,history=JSON_SET(history, "$.create_time", create_time);
-        Fun.out(_5_COPY_RENAME_COLUMN_TO_JSON,
+        Fun.out(_2_COPY_RENAME_COLUMN_TO_JSON,
                 out -> map.forEach((k, v) -> {
                     out.print("UPDATE " + k + " SET ");
                     final String collect = v.stream()

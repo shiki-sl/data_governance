@@ -1,11 +1,8 @@
 package com.shiki.demo.fun;
 
-import com.sun.org.apache.bcel.internal.generic.NEW;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -27,6 +24,7 @@ public interface Fun {
             consumer.accept(modify);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
 
