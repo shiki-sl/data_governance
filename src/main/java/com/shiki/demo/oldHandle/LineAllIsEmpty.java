@@ -2,15 +2,18 @@ package com.shiki.demo.oldHandle;
 
 import com.google.common.collect.Sets;
 import com.shiki.demo.constants.BaseConstants;
+import com.shiki.demo.constants.MergeRule;
+import com.shiki.demo.fun.SqlFun;
+import com.shiki.demo.funOld2New.GenerateFun;
 import com.shiki.demo.jdbc.config.DBPool;
 import com.shiki.demo.jdbc.config.JdbcUtil;
+import com.shiki.demo.movedb.SingletonMapRule;
 import io.vavr.Function2;
 import io.vavr.Function3;
 import io.vavr.Tuple2;
 import lombok.val;
 import lombok.var;
 import org.apache.commons.lang3.ObjectUtils;
-
 
 import java.io.*;
 import java.sql.Connection;
@@ -24,6 +27,7 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static com.shiki.demo.funOld2New.GenerateFun.*;
 import static com.shiki.demo.constants.BaseConstants.*;
 import static com.shiki.demo.constants.OldHandleConstants.*;
 import static java.lang.System.currentTimeMillis;
@@ -41,10 +45,10 @@ import static java.util.stream.Collectors.*;
  * @see #FIND_ANY 使用单表进行测试,只限于生成sql脚本和空字段文件,对于新旧数据库字段变更不起效,默认关闭
  * <p>
  * @see BaseConstants#ROOT_PATH 文件输出目录,需要保证该位置是一个文件夹,会在文件夹下生成独立文件,修改请见{@link #_1_COPY_INVALID_COLUMN_TO_JSON},
- * {@link #_2_DEL_INVALID_COLUMN},{@link #MODIFY_PATH} 独立文件详情见{@link BaseConstants#ROOT_PATH} 上方字段注释
+ * {@link #_2_DEL_INVALID_COLUMN} 独立文件详情见{@link BaseConstants#ROOT_PATH} 上方字段注释
  * {@link #_1_DEL_INVALID_TABLE}
  * <p>
- * @see #OLD_DB 旧库名 , {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
+ *  {@link com.shiki.demo.jdbc.config.DBPool#db} 新库名
  */
 public class LineAllIsEmpty {
 
@@ -57,13 +61,8 @@ public class LineAllIsEmpty {
      */
     final static boolean FIND_ANY = false;
 
-    /**
-     * 就表名
-     *
-     * @Author: shiki
-     * @Date: 2020/11/5 下午3:40
-     */
-    static final String OLD_DB = "ccxi_crc_proj";
+    final static Pattern DELIMITER = Pattern.compile("`");
+    final static Pattern SEMICOLON = Pattern.compile(";");
 
     /**
      * 需要排除的字段
@@ -71,18 +70,14 @@ public class LineAllIsEmpty {
      * @Author: shiki
      * @Date: 2020/11/5 下午3:39
      */
-    static final List<String> OTHER = Arrays.asList("create_user_id", "create_user_name", "create_time", "usable_status");
+    static final List<String> OTHER = Arrays.asList("create_time", "usable_status");
 
     /**
      * @Author: shiki
      * @Date: 2020/11/16 下午2:35
      * @see #_1_COPY_INVALID_COLUMN_TO_JSON 添加json,初始化json,赋值json
      * @see #_2_DEL_INVALID_COLUMN 删除源字段
-     * @see #MODIFY_PATH 新旧库的字段变化
      * @see #_1_DEL_INVALID_TABLE 不需要的表
-     * @see #modify_TABLE 修改的表
-     * @see #TABLE_COUNT_COLUMN 所有表的行数
-     * @see #MODIFY_EMPTY_COLUMN_COMMENT 表中的空字段
      */
 
     static final String _1_COPY_INVALID_COLUMN_TO_JSON = OLD_CLEAR + "1_copy_invalid_column_to_json.sql";
@@ -90,12 +85,7 @@ public class LineAllIsEmpty {
     static final String _1_DEL_INVALID_TABLE = CLEAR_DEV + "1_del_invalid_table.sql";
     static final String _2_DEL_INVALID_COLUMN = CLEAR_DEV + "2_del_invalid_column.sql";
 
-    static final String MODIFY_PATH = ROOT_PATH + "modify";
-    static final String modify_TABLE = ROOT_PATH + "modify_table";
-    static final String TABLE_COUNT_COLUMN = ROOT_PATH + "count_column.txt";
-    static final String MODIFY_EMPTY_COLUMN_COMMENT = ROOT_PATH + "modify_empty_column_comment";
-
-    static final List<String> last_table = new ArrayList<>();
+    public static final List<String> last_table = new ArrayList<>();
 
     /*
      * 取出上次删除的表
@@ -121,51 +111,6 @@ public class LineAllIsEmpty {
     }
 
     /**
-     * 取得全部表名
-     *
-     * @Author: shiki
-     * @Date: 2020/10/28 上午10:18
-     */
-    final static Function2<String, Statement, Tuple2<List<String>, List<String>>> GET_ALL_TABLE_NAME = (db, state) -> {
-        List<String> tableNames = new ArrayList<>(256);
-        List<String> deprecatedTable = new ArrayList<>(256);
-        try (ResultSet resultSet = state.executeQuery(String.format(ALL_TABLE_NAME, db))) {
-            while (resultSet.next()) {
-                String tableName = resultSet.getString("table_name");
-                final String tableComment = resultSet.getString("table_comment");
-                if (!"view".equalsIgnoreCase(tableComment)) {
-                    tableNames.add(tableName);
-                }
-                if (tableComment.startsWith("-无效表")) {
-                    deprecatedTable.add(tableName);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return new Tuple2<>(tableNames, deprecatedTable);
-    };
-
-    /**
-     * 取得全部外键
-     *
-     * @Author: shiki
-     * @Date: 2020/10/29 下午3:00
-     */
-    final static Function<Statement, List<String>> GET_DROP_PK = state -> {
-        try (val resultSet = state.executeQuery(DROP_PK)) {
-            final List<String> pk = new ArrayList<>();
-            while (resultSet.next()) {
-                pk.add(resultSet.getString(DEL_PK));
-            }
-            return pk;
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return Collections.emptyList();
-    };
-
-    /**
      * 获取数据库有效表名
      *
      * @Author: shiki
@@ -173,12 +118,12 @@ public class LineAllIsEmpty {
      */
     final static Function<Statement, List<String>> GET_VALID_TABLE_NAME = state -> {
         List<String> tableNames = new ArrayList<>(256);
-        try (ResultSet resultSet = state.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db));
+        try (ResultSet resultSet = state.executeQuery(String.format(ALL_TABLE_NAME, DBPool.db, DBPool.db));
              PrintStream delTable = new PrintStream(new File(_1_DEL_INVALID_TABLE));
-             PrintStream excludeTable = new PrintStream(new File(modify_TABLE))
         ) {
 //            删除表之前先清空外键
-            conn(GET_DROP_PK).orElseGet(ArrayList::new).forEach(delTable::println);
+//            conn(GET_DROP_PK).orElseGet(ArrayList::new).forEach(delTable::println);
+            delTable.println("/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;");
             while (resultSet.next()) {
                 String tableName = resultSet.getString("table_name");
                 final String tableComment = resultSet.getString("table_comment");
@@ -186,144 +131,25 @@ public class LineAllIsEmpty {
                     tableNames.add(tableName);
                 } else if (tableComment.startsWith("-无效表")) {
                     delTable.println(DROP_TABLE + tableName + ";");
-                    excludeTable.println(tableName);
                 }
             }
+            delTable.println("/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;");
         } catch (SQLException | FileNotFoundException e) {
             e.printStackTrace();
         }
         return tableNames;
     };
 
-    /**
-     * 获取表全部列
-     *
-     * @Author: shiki
-     * @Date: 2020/10/28 下午1:42
-     */
-    final static Function3<String, String, Statement, List<String>> GET_ALL_COLUMN = (tableName, db, state) -> {
-        System.out.println("tableSchema " + db + " tableName = " + tableName);
-        List<String> columnNames = new ArrayList<>(64);
-        final String format = String.format(ALL_COLUMN_NAME, db, tableName);
-        try (ResultSet resultSet = state.executeQuery(format)) {
+    final static Function2<String, Statement, List<String>> findColumnTypeIsDate = (tableName, stat) -> {
+        final ArrayList<String> list = new ArrayList<>();
+        try (final ResultSet resultSet = stat.executeQuery(String.format(EXCLUDE_DATE_TYPE, tableName, DBPool.db))) {
             while (resultSet.next()) {
-                columnNames.add(resultSet.getString("column_name"));
+                list.add(resultSet.getString("column_name"));
             }
-        } catch (SQLException e) {
-            FAIL_TABLE_NAME.add(tableName);
-            System.out.println(format);
-            e.printStackTrace();
-        }
-        return columnNames;
-    };
-
-    /**
-     * 计算全部表的列总数
-     *
-     * @Author: shiki
-     * @Date: 2020/10/29 下午3:29
-     */
-    final static Function2<String, Statement, Integer> GET_TABLE_COUNT_COLUMN = (tableName, state) -> {
-        try (var resultSet = state.executeQuery(String.format(TABLE_COLUMN_COLUMN, DBPool.db, tableName))) {
-            resultSet.next();
-            return resultSet.getInt("count");
+            return list;
         } catch (SQLException e) {
             e.printStackTrace();
-        }
-        return 0;
-    };
-
-    /**
-     * 根据表名和列名获取表中除了操作信息(创建修改删除等列)之外的全部空列
-     *
-     * @Author: shiki
-     * @Date: 2020/11/2 下午3:13
-     */
-    final static Function3<String, List<String>, Statement, List<String>> EMPTY_COLUMN_COMMENT = (tableName, columnNames, state) -> {
-        List<String> allLineIsEmptyColumnNames = new ArrayList<>(64);
-        StringBuilder sb = new StringBuilder();
-        columnNames.forEach(
-                columnName -> sb
-                        .append(UNION)
-//                        替换条件
-                        .append(TABLE_ALL_LINE_IS_NOT_EMPTY
-                                .replaceAll(DYNAMIC_TABLE_NAME, tableName)
-                                .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
-
-        try (ResultSet resultSet = state.executeQuery(PRE + sb.toString())) {
-            while (resultSet.next()) {
-                final String columnName = resultSet.getString("column_name");
-                if (resultSet.getInt("count") == 0 && !INVALID_COLUMN.contains(columnName)) {
-                    allLineIsEmptyColumnNames.add(columnName);
-                }
-            }
-            return allLineIsEmptyColumnNames;
-        } catch (SQLException e) {
-            System.out.println(PRE + sb.toString());
-            e.printStackTrace();
-        }
-        return allLineIsEmptyColumnNames;
-    };
-
-    /**
-     * 获取数据库更新信息
-     * <p>
-     * tuple2在此返回值中作为简单键值对表示形式 ._1表示key, ._2表示值
-     * 例如   addColumn user_id; 表示数据库中新增一行user_id的列
-     *
-     * @Author: shiki
-     * @Date: 2020/10/28 下午3:31
-     */
-    final static Supplier<Map<String, Tuple2<String, List<String>>>> DB_UPDATE = () -> {
-        final HashMap<String, Tuple2<String, List<String>>> map = new HashMap<>(4);
-        String addTable = "+ table";
-        String dropTable = "- table";
-        String addColumn = "添加 column";
-        String dropColumn = "删除 column";
-        System.out.println(DBPool.db);
-        val tuple2 = conn(GET_ALL_TABLE_NAME.apply(DBPool.db)).orElseThrow(RuntimeException::new);
-        final List<String> newTable = tuple2._1;
-        final List<String> oldTable = conn(GET_ALL_TABLE_NAME.apply(OLD_DB)).orElseThrow(RuntimeException::new)._1;
-        final var addTables = Sets.difference(new HashSet<>(newTable), new HashSet<>(oldTable));
-        map.put(addTable, new Tuple2<>("添加表", new ArrayList<>(addTables)));
-
-        final Sets.SetView<String> dropTables = Sets.difference(new HashSet<>(oldTable), new HashSet<>(newTable));
-        map.put(dropTable, new Tuple2<>("删除表", new ArrayList<>(dropTables)));
-
-        Sets.intersection(new HashSet<>(oldTable), new HashSet<>(newTable))
-                .forEach(tableName -> {
-                    final List<String> oldColumn = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(ArrayList::new).stream().map(String::toLowerCase).collect(toList());
-                    final List<String> newColumn = conn(GET_ALL_COLUMN.apply(tableName, OLD_DB)).orElseGet(ArrayList::new).stream().map(String::toLowerCase).collect(toList());
-                    final List<String> add = newColumn.stream().filter(column -> !oldColumn.contains(column)).collect(toList());
-                    if (add.size() > 0) {
-                        map.put(tableName, new Tuple2<>(addColumn, add));
-                    }
-                    final List<String> drop = oldColumn.stream().filter(column -> !newColumn.contains(column)).collect(toList());
-                    if (drop.size() > 0) {
-                        map.put(tableName, new Tuple2<>(dropColumn, drop));
-                    }
-                });
-        return map;
-    };
-
-    /**
-     * 输出全部的空字段注释变更sql并保存到本地
-     *
-     * @Author: shiki
-     * @Date: 2020/11/2 下午3:57
-     */
-    final static Consumer<String> PRINTF_MODIFY_EMPTY_COLUMN_COMMENT = str -> {
-        try (PrintStream ps = new PrintStream(str)) {
-            final List<String> tableNames = conn(GET_VALID_TABLE_NAME).orElseGet(Collections::emptyList);
-            tableNames.forEach(tableName -> {
-                        List<String> columnNames = conn(GET_ALL_COLUMN.apply(tableName, DBPool.db)).orElseGet(Collections::emptyList);
-                        conn(EMPTY_COLUMN_COMMENT.apply(tableName, columnNames))
-                                .filter(ObjectUtils::isNotEmpty)
-                                .ifPresent(column -> ps.println(tableName + "\t" + column));
-                    }
-            );
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
     };
 
@@ -414,12 +240,14 @@ public class LineAllIsEmpty {
             return Collections.emptyList();
         }
         List<String> allLineIsEmptyColumnNames = new ArrayList<>(64);
+        final List<String> list = conn(findColumnTypeIsDate.apply(tableName)).orElseGet(ArrayList::new);
         StringBuilder sb = new StringBuilder();
         columnNames.forEach(columnName -> sb
-                .append(UNION).append(TABLE_ALL_LINE_IS_NOT_EMPTY
+                .append(UNION).append(
+                        String.format(TABLE_ALL_LINE_IS_NOT_NULL, list.contains(columnName) ? " " : TABLE_ALL_LINE_IS_NOT_EMPTY)
 //                                替换条件
-                        .replaceAll(DYNAMIC_TABLE_NAME, tableName)
-                        .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
+                                .replaceAll(DYNAMIC_TABLE_NAME, tableName)
+                                .replaceAll(DYNAMIC_COLUMN_NAME, columnName)));
 
         try (ResultSet resultSet = statement.executeQuery(PRE + sb.toString())) {
             while (resultSet.next()) {
@@ -475,47 +303,6 @@ public class LineAllIsEmpty {
     }
 
     /**
-     * 输出全部表的字段总数
-     *
-     * @Author: shiki
-     * @Date: 2020/10/29 下午3:42
-     */
-    static void getAllTableColumn() {
-        try (var out = new PrintStream(TABLE_COUNT_COLUMN)) {
-            conn(GET_ALL_TABLE_NAME.apply(DBPool.db)).ifPresent(var -> var._1.forEach(str -> {
-                out.print(str + ":  ");
-                conn(GET_TABLE_COUNT_COLUMN.apply(str)).ifPresent(out::println);
-            }));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * 输出空字段
-     *
-     * @Author: shiki
-     * @Date: 2020/11/2 下午3:49
-     */
-    static void outEmptyColumn() {
-        PRINTF_MODIFY_EMPTY_COLUMN_COMMENT.accept(MODIFY_EMPTY_COLUMN_COMMENT);
-    }
-
-    /**
-     * 输出新旧库字段变化文件
-     *
-     * @Author: shiki
-     * @Date: 2020/10/28 下午3:39
-     */
-    static void outUpdate() {
-        try (final PrintStream modify = new PrintStream(new File(MODIFY_PATH))) {
-            DB_UPDATE.get().forEach((k, v) -> modify.println(k + "  " + v));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
      * 注入Statement,获取执行结果
      *
      * @param fun:被注入Statement的方法体
@@ -534,24 +321,120 @@ public class LineAllIsEmpty {
     }
 
     /**
-     * 集合间操作,自行查询guava文档
+     * 注入Statement,获取执行结果
      *
-     * @param list1 :
-     * @return java.util.List<T>
+     * @param fun:被注入Statement的方法体
+     * @return java.util.Optional<T> 执行结果
      * @Author: shiki
-     * @Date: 2020/10/27 下午4:59
+     * @Date: 2020/10/28 下午4:02
      */
-    static <T> List<T> leftIntersection(List<T> list1) {
-        final Sets.SetView<T> view = Sets.difference(new HashSet<>(list1), new HashSet<>(INVALID_COLUMN));
-        return new ArrayList<>(view);
+    static <T> Optional<T> clearConn(Function<Statement, T> fun) {
+        try (Connection connection = JdbcUtil.getClearConnection();
+             Statement statement = connection.createStatement()) {
+            return Optional.ofNullable(fun.apply(statement));
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Optional.empty();
+    }
+
+    static void insert() {
+//        final List<String> userId = getFile("updateUserId.sql");
+        final List<String> userId = Collections.emptyList();
+//        解析sql,生成映射实体
+        final Map<String, List<SingletonMapRule>> userId2new = userId.stream()
+                .filter(ObjectUtils::isNotEmpty)
+                .map(str -> {
+                    try {
+                        str = str.toLowerCase();
+                        final String[] adds = str.split(" add ");
+                        final String[] afters = adds[1].split(" after ");
+                        return SingletonMapRule.builder()
+                                .newTableName(adds[0].split(" table ")[1].trim())
+                                .oldColumn(SEMICOLON.matcher(afters[1].trim()).replaceAll(""))
+                                .newColumn(afters[0].split("column ")[1].split(" bigint ")[0].trim())
+                                .newColumnJavaType("long")
+                                .newDbDefault("null")
+                                .build();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        throw new RuntimeException(e);
+                    }
+                })
+                .peek(s -> s.oldTableName(s.newTableName()))
+                .collect(groupingBy(SingletonMapRule::oldTableName));
+        /**
+         * 获取sql变更脚本 详情见{@link CHAN_DAO}
+         */
+        final var stringListMap = GenerateFun.updateDbByMd();
+        Map<String, List<SingletonMapRule>> map = new HashMap<>(userId2new);
+        stringListMap.forEach((k, v) -> map.computeIfAbsent(k, v1 -> new ArrayList<>())
+                .addAll(v.stream().map(GenerateFun.Entity::toSingletonMapRule).collect(toList())
+                ));
+        map.putAll(MergeRule.check.stream().collect(groupingBy(SingletonMapRule::newTableName)));
+        final Optional<Map<String, String>> optional = SqlFun.query(PRIMARY, resultSet -> {
+            Map<String, String> primary = new HashMap<>();
+            try {
+                while (resultSet.next()) {
+                    primary.put(resultSet.getString("table_name"), resultSet.getString("column_name"));
+                }
+                return primary;
+            } catch (SQLException e) {
+                e.printStackTrace();
+                throw new RuntimeException(e);
+            }
+        }, () -> {
+            throw new RuntimeException();
+        });
+        final Map<String, String> query = optional.orElseGet(HashMap::new);
+//        INSERT into singleton_map_rule(
+//        old_table_name, new_table_name, old_column, new_column, new_column_java_type, new_db_default, json_key, old_main_id_name, new_main_id_name)
+        List<SQLException> list = new ArrayList<>();
+        final List<String> excludeTableName = MergeRule.check.stream().map(SingletonMapRule::oldTableName).distinct().collect(toList());
+
+        SqlFun.insert(insert_singleton_map_rule, stat -> {
+            try {
+                map.forEach((k, v) -> v.stream()
+                        .distinct()
+                        .peek(s -> s.newTableName(DELIMITER.matcher(s.newTableName()).replaceAll("").trim()))
+                        .filter(s -> !(s.oldColumn().equals("create_user_id") || excludeTableName.contains(s.newTableName())))
+                        .forEach(s -> {
+                            try {
+                                final String oldTableName = DELIMITER.matcher(s.oldTableName()).replaceAll("").trim();
+                                final String oldColumn = DELIMITER.matcher(s.oldColumn()).replaceAll("");
+                                final String newColumn = DELIMITER.matcher(s.newColumn()).replaceAll("").trim();
+                                stat.setString(1, oldTableName);
+                                stat.setString(2, DELIMITER.matcher(s.newTableName()).replaceAll("").trim());
+                                stat.setString(3, oldColumn.trim());
+                                stat.setString(4, oldColumn.equals(newColumn) ? excludeTableName.contains(s.oldTableName()) ? newColumn : newColumn + "_swap" : newColumn);
+                                stat.setString(5, MergeRule.mysqlType2javaType(s.newColumnJavaType()).trim());
+                                stat.setString(6, s.newDbDefault() == null ? "null" : s.newDbDefault().trim());
+                                stat.setString(7, oldColumn.equals(newColumn) ? null : oldColumn);
+                                stat.setString(8, s.oldMainIdName() == null ? query.get(oldTableName) == null ? "find not primary" : query.get(oldTableName) : s.oldMainIdName().trim());
+                                stat.setString(9, s.newMainIdName() == null ? query.get(oldTableName) == null ? "find not primary" : query.get(oldTableName) : s.newMainIdName().trim());
+                                stat.setBoolean(10, !oldColumn.equals(newColumn));
+                                stat.setInt(11, s.tableType() == null ? 1 : s.tableType());
+                                stat.addBatch();
+                            } catch (SQLException e) {
+                                e.printStackTrace();
+                                list.add(e);
+                                throw new RuntimeException(e);
+                            }
+                        }));
+                return stat.executeBatch();
+            } catch (SQLException e) {
+                e.printStackTrace();
+                list.add(e);
+                throw new RuntimeException(e);
+            }
+        });
+        list.forEach(System.out::println);
     }
 
     public static void main(String[] args) {
         final long start = currentTimeMillis();
-//        EXECUTOR.submit(LineAllIsEmpty::outUpdate);
         EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
-//        EXECUTOR.submit(LineAllIsEmpty::getAllTableColumn);
-//        EXECUTOR.submit(LineAllIsEmpty::outEmptyColumn);
+//        EXECUTOR.submit(LineAllIsEmpty::insert);
 
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");

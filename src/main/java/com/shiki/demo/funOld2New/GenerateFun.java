@@ -1,10 +1,13 @@
 package com.shiki.demo.funOld2New;
 
 import com.shiki.demo.fun.Fun;
+import com.shiki.demo.movedb.SingletonMapRule;
+import com.shiki.demo.oldHandle.LineAllIsEmpty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.var;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.io.*;
 import java.net.URI;
@@ -31,6 +34,13 @@ public class GenerateFun {
         System.out.println("BaseConstants init is " + isInit);
     }
 
+    /**
+     * 获取禅道配置信息
+     *
+     * @return com.shiki.demo.funOld2New.GenerateFun.ChanDao
+     * @Author: shiki
+     * @Date: 2020/12/1 下午6:05
+     */
     static ChanDao initChandao() {
         final InputStream is = GenerateFun.class.getResourceAsStream("/application.properties");
         try {
@@ -44,7 +54,20 @@ public class GenerateFun {
         throw new RuntimeException("init exception");
     }
 
+    /**
+     * 禅道
+     *
+     * @Author: shiki
+     * @Date: 2020/12/1 下午6:06
+     */
     final static ChanDao CHAN_DAO = initChandao();
+
+    /**
+     * mysql中的 '`' 标识符
+     *
+     * @Author: shiki
+     * @Date: 2020/12/1 下午6:05
+     */
     final static Pattern mysqlSemicolon = Pattern.compile("`");
 
     /**
@@ -75,7 +98,7 @@ public class GenerateFun {
      * @Date: 2020/11/17 上午10:23
      */
     private static final String CLEAR_MODIFY_COLUMN = CLEAR_DEV + "4_rename_swap_column.sql";
-    
+
     private static final String _2_COPY_RENAME_COLUMN_TO_JSON = OLD_CLEAR_COLUMN_UPDATE + "2_copy_rename_column_to_json.sql";
 
 
@@ -108,7 +131,7 @@ public class GenerateFun {
      * @Author: shiki
      * @Date: 2020/11/16 上午11:26
      */
-    static <T> T getFile(String fileName, Function<BufferedReader, T> fun) {
+    public static <T> T getFile(String fileName, Function<BufferedReader, T> fun) {
         URI resource;
         try {
             resource = Objects.requireNonNull(GenerateFun.class.getClassLoader().getResource(fileName)).toURI();
@@ -123,12 +146,41 @@ public class GenerateFun {
         throw new RuntimeException("处理失败");
     }
 
-    static <T> T getNetwork(ChanDao chanDao, Function<BufferedReader, T> fun) {
+    public static List<String> getFile(String fileName) {
+        List<String> list = new LinkedList<>();
+        URI resource;
+        try {
+            resource = Objects.requireNonNull(GenerateFun.class.getClassLoader().getResource(fileName)).toURI();
+            try (BufferedReader reader = new BufferedReader(new FileReader(new File(resource)))) {
+                String str;
+                while ((str = reader.readLine()) != null) {
+                    list.add(str);
+                }
+                return list;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+        }
+        throw new RuntimeException("处理失败");
+    }
+
+    /**
+     * 获取线上禅道文档
+     *
+     * @param chanDao:
+     * @param fun:
+     * @return T
+     * @Author: shiki
+     * @Date: 2020/12/1 下午6:06
+     */
+    static <T> T getChanDaoByNetwork(ChanDao chanDao, Function<BufferedReader, T> fun) {
         Process proc;
         try {
-            final String path = GenerateFun.class.getClassLoader().getResource("py/chandao.py").getPath();
-            final String[] cmdarray = {"python", path, chanDao.username, chanDao.password, chanDao.loginUrl, chanDao.mdUrl};
-            proc = Runtime.getRuntime().exec(cmdarray);
+            final String path = GenerateFun.class.getClassLoader().getResource("py/chan_dao.py").getPath();
+            final String[] cmdArray = {"python", path, chanDao.username, chanDao.password, chanDao.loginUrl, chanDao.mdUrl};
+            proc = Runtime.getRuntime().exec(cmdArray);
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
                 return fun.apply(reader);
             } catch (IOException e) {
@@ -173,6 +225,7 @@ public class GenerateFun {
                 map.computeIfAbsent(tableName, k -> new ArrayList<>()).add(new ModifyColumn(tableName, split[2], split[3], comment));
             }
         }
+        LineAllIsEmpty.last_table.stream().map(str -> "`" + str.replaceAll(";", "").trim() + "` ").peek(System.out::println).filter(map::containsKey).forEach(map::remove);
         return map;
     }
 
@@ -259,24 +312,40 @@ public class GenerateFun {
 //    UPDATE `business_transfer_path` SET history=JSON_SET(history, "$.usable_status", usable_status) ,history=JSON_SET(history, "$.create_time", create_time);
         Fun.out(_2_COPY_RENAME_COLUMN_TO_JSON,
                 out -> map.forEach((k, v) -> {
-                    out.print("UPDATE " + k + " SET ");
-                    final String collect = v.stream()
-                            .map(str -> mysqlSemicolon.matcher(str).replaceAll(""))
-                            .map(column -> "history=JSON_SET(history, \"$." + column + "\", " + column + ")")
-                            .collect(joining(","));
-                    out.println(collect + ";");
+                    final String trim = k.replaceAll("`", "").trim() + ";";
+                    if (!LineAllIsEmpty.last_table.contains(trim)) {
+                        out.print("");
+                        final String collect = v.stream()
+                                .filter(str -> !str.contains("attribute"))
+                                .map(str -> mysqlSemicolon.matcher(str).replaceAll(""))
+                                .map(column -> "history=JSON_SET(history, \"$." + column + "\", " + column + ")")
+                                .collect(joining(","));
+                        if (ObjectUtils.isNotEmpty(collect)) {
+                            out.println("UPDATE " + k + " SET " + collect + ";");
+                        }
+                    } else System.err.println("k:   " + k);
                 }));
     }
 
+    public static Map<String, List<Entity>> updateDbByMd() {
+        final List<String> list = getChanDaoByNetwork(CHAN_DAO, getAllSqlByMd);
+        return getAllChangeColumnBySql(list);
+    }
+
     public static void main(String[] args) {
-        final List<String> list = getNetwork(CHAN_DAO, getAllSqlByMd);
+        final List<String> list = getChanDaoByNetwork(CHAN_DAO, getAllSqlByMd);
         final Map<String, List<Entity>> map = getAllChangeColumnBySql(list);
+//        map.forEach((k, v) -> {
+//            System.out.println("k = " + k);
+//            System.out.println("v = " + v);
+//        });
         final List<ChangeColumn> changeColumns = generatorUpdateSqlCode(map);
         assert changeColumns != null;
         generatorSetJsonSqlCode(changeColumns);
     }
 
     public interface Entity {
+        SingletonMapRule toSingletonMapRule();
     }
 
     /**
@@ -293,6 +362,17 @@ public class GenerateFun {
         String oldColumn;
         String columnType;
         String columnComment;
+
+        @Override
+        public SingletonMapRule toSingletonMapRule() {
+            return SingletonMapRule.builder()
+                    .newTableName(tableName)
+                    .oldTableName(tableName)
+                    .oldColumn(oldColumn)
+                    .newColumn(oldColumn)
+                    .newColumnJavaType(columnType)
+                    .build();
+        }
     }
 
     /**
@@ -310,6 +390,17 @@ public class GenerateFun {
         String newColumn;
         String columnType;
         String columnComment;
+
+        @Override
+        public SingletonMapRule toSingletonMapRule() {
+            return SingletonMapRule.builder()
+                    .newTableName(tableName)
+                    .oldTableName(tableName)
+                    .oldColumn(oldColumn)
+                    .newColumn(newColumn)
+                    .newColumnJavaType(columnType)
+                    .build();
+        }
     }
 
     @AllArgsConstructor

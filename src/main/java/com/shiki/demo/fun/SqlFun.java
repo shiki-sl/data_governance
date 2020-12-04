@@ -25,14 +25,15 @@ public interface SqlFun {
      * @Date: 2020/10/28 下午4:02
      */
     static <T> Optional<T> query(String querySql, Function<ResultSet, T> successFun, Supplier<T> catchFun) {
-        try (final ResultSet resultSet = Private.getStat(querySql).executeQuery()
-        ) {
-            return Optional.ofNullable(successFun.apply(resultSet));
-        } catch (SQLException e) {
-            e.printStackTrace();
-            catchFun.get();
-        }
-        return Optional.empty();
+        return Private.getStat(querySql, stat -> {
+            try (final ResultSet resultSet = stat.executeQuery()) {
+                return Optional.ofNullable(successFun.apply(resultSet));
+            } catch (SQLException e) {
+                e.printStackTrace();
+                catchFun.get();
+            }
+            return Optional.empty();
+        });
     }
 
     /**
@@ -45,8 +46,16 @@ public interface SqlFun {
      * @Date: 2020/10/28 下午4:02
      */
     static <T> Optional<T> insert(String querySql, Function<PreparedStatement, T> successFun) {
-        final PreparedStatement stat = Private.getStat(querySql);
-        return Optional.ofNullable(successFun.apply(stat));
+        try (Connection connection = JdbcUtil.getClearConnection();
+             final PreparedStatement statement = connection.prepareStatement(querySql);
+        ) {
+            final Optional<T> apply = Optional.ofNullable(successFun.apply(statement));
+            connection.commit();
+            return apply;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
     }
 
     class Private {
@@ -58,11 +67,11 @@ public interface SqlFun {
          * @Author: shiki
          * @Date: 2020/11/23 下午2:34
          */
-        private static PreparedStatement getStat(String sqlString) {
+        private static <T> T getStat(String sqlString, Function<PreparedStatement, T> function) {
             try (Connection connection = JdbcUtil.getConnection();
                  final PreparedStatement statement = connection.prepareStatement(sqlString);
             ) {
-                return statement;
+                return function.apply(statement);
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }

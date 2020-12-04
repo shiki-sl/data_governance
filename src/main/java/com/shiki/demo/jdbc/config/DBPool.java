@@ -25,9 +25,11 @@ public class DBPool {
      * 使用LinkedList集合存放数据库连接
      */
     private static final LinkedList<Connection> CONN_POOL = new LinkedList<>();
+    private static final LinkedList<Connection> CLEAR_POOL = new LinkedList<>();
 
     public static String db;
     private static String url;
+    private static String clear_url;
     private static String user;
     private static String password;
     private static final Properties prop;
@@ -38,6 +40,7 @@ public class DBPool {
         try {
             prop.load(in);
             url = prop.getProperty("url");
+            clear_url = prop.getProperty("clear_url");
             db = prop.getProperty("db");
             user = prop.getProperty("user");
             password = prop.getProperty("password");
@@ -66,6 +69,9 @@ public class DBPool {
                 // 将创建的连接添加的list中
                 System.out.println("初始化数据库连接池，创建第 " + (i + 1) + " 个连接，添加到池中");
                 CONN_POOL.add(conn);
+                if (CLEAR_POOL.size()<=3){
+                    CLEAR_POOL.add(DriverManager.getConnection(clear_url, user, password));
+                }
             } catch (SQLException e) {
                 e.printStackTrace();
             }
@@ -87,6 +93,27 @@ public class DBPool {
                     CONN_POOL.add(conn);
                     System.out.println("关闭当前连接，把连接还给连接池.........");
                     System.out.println("池中连接数为 " + CONN_POOL.size());
+                    return null;
+                }
+            });
+        } else {
+            throw new RuntimeException("数据库繁忙，稍后再试............");
+        }
+    }    /**
+     * 获取数据库连接
+     */
+    public Connection getClearConnection() {
+        if (CLEAR_POOL.size() > 0) {
+            //从集合中获取一个连接
+            final Connection conn = CLEAR_POOL.removeFirst();
+            //返回Connection的代理对象
+            return (Connection) Proxy.newProxyInstance(DBPool.class.getClassLoader(), conn.getClass().getInterfaces(), (proxy, method, args) -> {
+                if (!"close".equals(method.getName())) {
+                    return method.invoke(conn, args);
+                } else {
+                    CLEAR_POOL.add(conn);
+                    System.out.println("关闭当前连接，把连接还给连接池.........");
+                    System.out.println("池中连接数为 " + CLEAR_POOL.size());
                     return null;
                 }
             });

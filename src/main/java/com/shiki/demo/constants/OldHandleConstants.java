@@ -24,7 +24,7 @@ public interface OldHandleConstants extends BaseConstants {
      * @Date: 2020/10/27 下午3:18
      */
     List<String> INVALID_COLUMN = Arrays.asList(
-            "usable_status",
+//            "usable_status",
             "create_time",
             "create_ip",
             "create_user_id",
@@ -37,9 +37,9 @@ public interface OldHandleConstants extends BaseConstants {
             "delete_ip",
             "delete_flag",
             "delete_user_id",
-            "delete_user_name",
-            "order_code"
-//            , "attribute1",
+            "delete_user_name"
+//            ,"order_code",
+//            "attribute1",
 //            "attribute2",
 //            "attribute3",
 //            "attribute4",
@@ -98,18 +98,20 @@ public interface OldHandleConstants extends BaseConstants {
     String DROP_TABLE = "drop  table if exists ";
 
     /**
-     * 查询全部表名
+     * 查询全部表名,排除试图
      *
      * @Author: shiki
      * @Date: 2020/10/27 上午10:50
      */
-    String ALL_TABLE_NAME = "select\n" +
-            "    TABLE_NAME,\n" +
-            "    TABLE_COMMENT\n" +
-            "from\n" +
-            "    INFORMATION_SCHEMA.Tables\n" +
-            "where\n" +
-            "        table_schema = '%s'";
+    String ALL_TABLE_NAME = " SELECT DISTINCT a.TABLE_NAME,a.TABLE_COMMENT\n" +
+            " FROM INFORMATION_SCHEMA.TABLES AS a\n" +
+            " WHERE a.table_schema = '%s'\n" +
+            "  AND NOT EXISTS(\n" +
+            "        SELECT 1\n" +
+            "        FROM information_schema.TABLES as c\n" +
+            "        WHERE table_type = 'VIEW'\n" +
+            "          and a.TABLE_NAME = c.TABLE_NAME\n" +
+            "          AND TABLE_SCHEMA = '%s')";
 
     /**
      * 用于替换的动态表列名
@@ -152,12 +154,28 @@ public interface OldHandleConstants extends BaseConstants {
     String PRE = "select 'column_name',1 'count'";
 
     /**
+     * 排除时间类型,避免mysql8报错
+     *
+     * @Author: shiki
+     * @Date: 2020/11/24 下午5:12
+     */
+    String EXCLUDE_DATE_TYPE = "select column_name from information_schema.columns where table_name = '%s' and table_schema = '%s' and (data_type='datetime' or data_type='date' or data_type='time');";
+
+    /**
+     * 查询全部的空字符串
+     *
+     * @Author: shiki
+     * @Date: 2020/11/24 下午5:14
+     */
+    String TABLE_ALL_LINE_IS_NOT_EMPTY = "and dynamic_column_name != ''";
+
+    /**
      * 查出全部的空列
      *
      * @Author: shiki
      * @Date: 2020/10/27 上午10:57
      */
-    String TABLE_ALL_LINE_IS_NOT_EMPTY = " select 'dynamic_column_name', exists(select 1 from dynamic_table_name where dynamic_column_name is not null and dynamic_column_name != '') 'count' ";
+    String TABLE_ALL_LINE_IS_NOT_NULL = " select 'dynamic_column_name', exists(select 1 from dynamic_table_name where dynamic_column_name is not null %s) 'count' ";
 
     /**
      * 联表查询关键字
@@ -192,6 +210,13 @@ public interface OldHandleConstants extends BaseConstants {
     String ADD_COLUMN = "alter table %s add column %s json comment \"存放老库数据，新库不对其查询、操作，保持老库到新库同步\";";
 
     /**
+     * id移到首位
+     *
+     * @Author: shiki
+     * @Date: 2020/11/25 下午1:56
+     */
+    String ID_FIRST = "ALTER TABLE `%s` MODIFY COLUMN `%s` %s NOT NULL FIRST;";
+    /**
      * 生成Json字段
      * 使用说明 str=String.format(EMPTY_COLUMNS_2_JSON, "user","info_detail");
      * str = UPDATE user SET info_detail =JSON_OBJECT()
@@ -218,4 +243,22 @@ public interface OldHandleConstants extends BaseConstants {
      * @Date: 2020/10/27 下午1:57
      */
     String JSON_SET = "%s=JSON_SET(%s, \"$.%s\", %s) ";
+
+    /**
+     * 映射表插入数据
+     *
+     * @Author: shiki
+     * @Date: 2020/11/30 下午3:27
+     */
+    String insert_singleton_map_rule = " INSERT into singleton_map_rule(old_table_name, new_table_name, old_column, new_column, new_column_java_type,\n" +
+            "                               new_db_default, json_key, old_main_id_name, new_main_id_name, is_backup, table_type)\n" +
+            " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
+
+    /**
+     * 查询全部表主键
+     *
+     * @Author: shiki
+     * @Date: 2020/11/30 下午3:28
+     */
+    String PRIMARY = "select table_name , column_name from  INFORMATION_SCHEMA.KEY_COLUMN_USAGE  t where t.table_schema='ccxi_crc_proj' and t.CONSTRAINT_name = 'PRIMARY'";
 }

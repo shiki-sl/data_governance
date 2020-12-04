@@ -18,4 +18,10 @@ public class JdbcUtil {
     public static Connection getConnection() {
         return CONN_POOL.getConnection();
     }
+    /**
+     * 从池中获取一个连接
+     */
+    public static Connection getClearConnection() {
+        return CONN_POOL.getClearConnection();
+    }
 }
