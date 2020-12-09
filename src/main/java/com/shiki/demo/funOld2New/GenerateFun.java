@@ -3,10 +3,8 @@ package com.shiki.demo.funOld2New;
 import com.shiki.demo.fun.Fun;
 import com.shiki.demo.movedb.SingletonMapRule;
 import com.shiki.demo.oldHandle.LineAllIsEmpty;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.var;
+import io.vavr.Tuple2;
+import lombok.*;
 import org.apache.commons.lang3.ObjectUtils;
 
 import java.io.*;
@@ -17,6 +15,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static com.shiki.demo.constants.BaseConstants.*;
+import static com.shiki.demo.oldHandle.LineAllIsEmpty.COLUMN_COMMENT_MAP;
 import static java.util.stream.Collectors.*;
 
 /**
@@ -76,14 +75,14 @@ public class GenerateFun {
      * @Author: shiki
      * @Date: 2020/11/16 下午2:38
      */
-    static final String CLEAR_ADD_COLUMN = OLD_CLEAR + "3_add_column_to_change_type.sql";
+    static final String CLEAR_ADD_COLUMN = OLD_CLEAR + "2_add_column_to_change_type.sql";
     /**
      * 原库到clear库新增的字段
      *
      * @Author: shiki
      * @Date: 2020/11/16 下午2:38
      */
-    static final String COLUMN_TYPE_UPDATE_SET_SWAP_COLUMN = OLD_CLEAR_COLUMN_UPDATE + "3_column_type_update_set_swap_column.sql";
+    static final String COLUMN_TYPE_UPDATE_SET_SWAP_COLUMN = OLD_CLEAR_COLUMN_UPDATE + "5_column_type_update_set_swap_column.sql";
     /**
      * clear库到dev删除的字段
      *
@@ -210,51 +209,52 @@ public class GenerateFun {
         for (String str : list) {
             if (str.startsWith("ALTER TABLE")) {
                 final String[] split = str.split("\\.");
-                tableName = split[split.length - 1];
+                tableName = mysqlSemicolon.matcher(split[split.length - 1].split("ALTER TABLE")[1].trim()).replaceAll("");
                 map.computeIfAbsent(tableName, k -> new ArrayList<>());
             }
             final String[] split = str.split(" ");
 //            CHANGE COLUMN `attribute4` `is_valid` varchar(1) CHARACTER SET utf8 COLLATE utf8_general_ci NULL COMMENT '表示是否有效（重要）1-有效  0-无效' FIRST,
-            final String[] comments = str.split("'");
-            String comment = comments.length > 1 ? comments[1] : "无注释------------------------------";
+            Map<String, String> tableNames = COLUMN_COMMENT_MAP.get(tableName);
             if (str.startsWith("CHANGE COLUMN")) {
+                final String key = mysqlSemicolon.matcher(split[2]).replaceAll("");
+                String comment = tableNames.get(key);
                 map.computeIfAbsent(tableName, k -> new ArrayList<>()).add(new ChangeColumn(tableName, split[2], split[3], split[4], comment));
             }
 //            MODIFY COLUMN `is_attendance` tinyint(1) NULL DEFAULT NULL COMMENT '是否列席 $RM_YES_NOT=否、是 {0=否,1=是}' AFTER `committee_type`;
             if (str.startsWith("MODIFY COLUMN")) {
+                final String key = mysqlSemicolon.matcher(split[2]).replaceAll("");
+                String comment = tableNames.get(key);
                 map.computeIfAbsent(tableName, k -> new ArrayList<>()).add(new ModifyColumn(tableName, split[2], split[3], comment));
             }
         }
-        LineAllIsEmpty.last_table.stream().map(str -> "`" + str.replaceAll(";", "").trim() + "` ").peek(System.out::println).filter(map::containsKey).forEach(map::remove);
         return map;
     }
 
     //    ALTER TABLE `ccxi_dev`.`base_associated_document`
 //    ADD COLUMN `is_operation_material_swap` tinyint(1) NULL COMMENT '是否运作材料 $RM_YES_NOT=否、是 {0=否,1=是}' AFTER `history`;
-    private static List<ChangeColumn> generatorUpdateSqlCode(Map<String, List<Entity>> map) {
+    private static void generatorUpdateSqlCode(Map<String, List<Entity>> map) {
         try (PrintStream add = new PrintStream(new File(CLEAR_ADD_COLUMN));
              PrintStream set = new PrintStream(new File(COLUMN_TYPE_UPDATE_SET_SWAP_COLUMN));
              PrintStream del = new PrintStream(new File(CLEAR_DEL_COLUMN));
              PrintStream modify = new PrintStream(new File(CLEAR_MODIFY_COLUMN))
         ) {
             final LinkedList<String> addList = new LinkedList<>();
-            final LinkedList<ChangeColumn> setJsonList = new LinkedList<>();
             final LinkedList<String> modifyList = new LinkedList<>();
             final LinkedList<String> setList = new LinkedList<>();
             final List<String> delList = new LinkedList<>();
             map.forEach((tableName, columnNames) -> {
                 addList.add("ALTER TABLE " + tableName);
                 modifyList.add("ALTER TABLE " + tableName);
+                Map<String, String> tableNames = COLUMN_COMMENT_MAP.get(tableName);
                 final var columnMaps = columnNames.stream().collect(groupingBy(Entity::getClass));
                 columnMaps.getOrDefault(ChangeColumn.class, new ArrayList<>()).forEach(c -> {
                     final ChangeColumn column = (ChangeColumn) c;
 //                    ADD COLUMN `is_operation_material_swap` tinyint(1) NULL COMMENT '是否运作材料 $RM_YES_NOT=否、是 {0=否,1=是}' AFTER `history`;
                     final boolean isBoolean = column.columnType.equalsIgnoreCase("");
-                    addList.add("ADD COLUMN " + column.newColumn + " " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 0 " : " NULL COMMENT '" + column.columnComment + "',"));
+                    addList.add("ADD COLUMN " + column.newColumn + " " + column.columnType + " " + (isBoolean ? " NOT NULL DEFAULT 0 " : " NULL COMMENT '" + tableNames.get(mysqlSemicolon.matcher(column.oldColumn).replaceAll("")) + "',"));
                     delList.add("alter table " + tableName + " drop column " + column.oldColumn + ";");
 //                    UPDATE `singleton_map_rule` SET new_column=new_table_name
                     setList.add("UPDATE " + column.tableName + " SET " + column.newColumn + "=" + column.oldColumn + ";");
-                    setJsonList.add(column);
                 });
                 columnMaps.getOrDefault(ModifyColumn.class, new ArrayList<>()).forEach(c -> {
                     final ModifyColumn column = (ModifyColumn) c;
@@ -281,11 +281,9 @@ public class GenerateFun {
             add.println("SET FOREIGN_KEY_CHECKS = 1;");
             del.println("SET FOREIGN_KEY_CHECKS = 1;");
             modify.println("SET FOREIGN_KEY_CHECKS = 1;");
-            return setJsonList;
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-        return null;
     }
 
     private static void generatorSetJsonSqlCode(List<ChangeColumn> list) {
@@ -312,24 +310,29 @@ public class GenerateFun {
 //    UPDATE `business_transfer_path` SET history=JSON_SET(history, "$.usable_status", usable_status) ,history=JSON_SET(history, "$.create_time", create_time);
         Fun.out(_2_COPY_RENAME_COLUMN_TO_JSON,
                 out -> map.forEach((k, v) -> {
-                    final String trim = k.replaceAll("`", "").trim() + ";";
-                    if (!LineAllIsEmpty.last_table.contains(trim)) {
-                        out.print("");
-                        final String collect = v.stream()
-                                .filter(str -> !str.contains("attribute"))
-                                .map(str -> mysqlSemicolon.matcher(str).replaceAll(""))
-                                .map(column -> "history=JSON_SET(history, \"$." + column + "\", " + column + ")")
-                                .collect(joining(","));
-                        if (ObjectUtils.isNotEmpty(collect)) {
-                            out.println("UPDATE " + k + " SET " + collect + ";");
-                        }
-                    } else System.err.println("k:   " + k);
+                    out.print("");
+                    final String collect = v.stream()
+                            .filter(str -> !str.contains("attribute"))
+                            .map(str -> mysqlSemicolon.matcher(str).replaceAll(""))
+                            .map(column -> "history=JSON_SET(history, \"$." + column + "\", " + column + ")")
+                            .collect(joining(","));
+                    if (ObjectUtils.isNotEmpty(collect)) {
+                        out.println("UPDATE " + k + " SET " + collect + ";");
+                    }
                 }));
     }
 
-    public static Map<String, List<Entity>> updateDbByMd() {
+    public static Map<String, List<SingletonMapRule>> updateDbByMd() {
         final List<String> list = getChanDaoByNetwork(CHAN_DAO, getAllSqlByMd);
-        return getAllChangeColumnBySql(list);
+        final Map<String, List<Entity>> sql = getAllChangeColumnBySql(list);
+        Map<String, List<SingletonMapRule>> map = new HashMap<>();
+        sql.forEach((k, v) ->
+                map.put(k, v.stream()
+                        .map(Entity::toSingletonMapRule)
+                        .peek(s -> s.oldColumn(mysqlSemicolon.matcher(s.oldColumn()).replaceAll("")))
+                        .peek(s -> s.newColumn(mysqlSemicolon.matcher(s.newColumn()).replaceAll("")))
+                        .collect(toList())));
+        return map;
     }
 
     public static void main(String[] args) {
@@ -339,9 +342,7 @@ public class GenerateFun {
 //            System.out.println("k = " + k);
 //            System.out.println("v = " + v);
 //        });
-        final List<ChangeColumn> changeColumns = generatorUpdateSqlCode(map);
-        assert changeColumns != null;
-        generatorSetJsonSqlCode(changeColumns);
+        generatorUpdateSqlCode(map);
     }
 
     public interface Entity {

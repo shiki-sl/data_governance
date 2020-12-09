@@ -4,6 +4,7 @@ import com.shiki.demo.jdbc.config.JdbcUtil;
 
 import java.sql.*;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -30,9 +31,42 @@ public interface SqlFun {
                 return Optional.ofNullable(successFun.apply(resultSet));
             } catch (SQLException e) {
                 e.printStackTrace();
-                catchFun.get();
+                return Optional.ofNullable(catchFun.get());
+            }
+        });
+    }
+
+    static <T> Optional<T> query(String querySql, Function<ResultSet, T> successFun, Function<SQLException, T> catchFun) {
+        return Private.getStat(querySql, stat -> {
+            try (final ResultSet resultSet = stat.executeQuery()) {
+                return Optional.ofNullable(successFun.apply(resultSet));
+            } catch (SQLException e) {
+                e.printStackTrace();
+                return Optional.ofNullable(catchFun.apply(e));
+            }
+        });
+    }
+
+    static <T> Optional<T> query(String querySql, Function<ResultSet, T> successFun, Consumer<SQLException> catchFun) {
+        return Private.getStat(querySql, stat -> {
+            try (final ResultSet resultSet = stat.executeQuery()) {
+                return Optional.ofNullable(successFun.apply(resultSet));
+            } catch (SQLException e) {
+                e.printStackTrace();
+                catchFun.accept(e);
             }
             return Optional.empty();
+        });
+    }
+
+    static <T> Optional<T> query(String querySql, Function<ResultSet, T> successFun) {
+        return Private.getStat(querySql, stat -> {
+            try (final ResultSet resultSet = stat.executeQuery()) {
+                return Optional.ofNullable(successFun.apply(resultSet));
+            } catch (SQLException e) {
+                e.printStackTrace();
+                throw new RuntimeException(e);
+            }
         });
     }
 
