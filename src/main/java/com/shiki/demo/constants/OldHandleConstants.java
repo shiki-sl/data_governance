@@ -98,8 +98,8 @@ public interface OldHandleConstants extends BaseConstants {
      * @Date: 2020/11/30 下午3:27
      */
     String INSERT_SINGLETON_MAP_RULE = " INSERT into singleton_map_rule(old_table_name, new_table_name, old_column, new_column, new_column_java_type,\n" +
-            "                               new_db_default, json_key, old_main_id_name, new_main_id_name, is_backup, table_type)\n" +
-            " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
+            "                               new_db_default, json_key, old_main_id_name, new_main_id_name, is_backup, table_type, is_json)\n" +
+            " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
 
     /**
      * 查询全部表主键
@@ -153,4 +153,20 @@ public interface OldHandleConstants extends BaseConstants {
             "             where TABLE_SCHEMA = 'ccxi_crc_proj'\n" +
             "               and t.TABLE_TYPE != 'VIEW'\n" +
             "               and t.TABLE_NAME = c.TABLE_NAME)";
+
+    /**
+     * 数据库的异常字段
+     *
+     * @Author: shiki
+     * @Date: 2020/12/10 下午4:50
+     */
+    String EXCEPTION_COLUMN = "select table_name, column_name from information_schema.columns where column_comment like '%异常字段%' and table_schema = 'ccxi_crc_proj'";
+
+    /**
+     * 等待合并表
+     *
+     * @Author: shiki
+     * @Date: 2020/12/10 下午7:06
+     */
+    String MERGE_TABLE = "select table_name from information_schema.tables where table_schema = 'ccxi_crc_proj' and TABLE_COMMENT like '%待合并表%'";
 }

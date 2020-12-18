@@ -79,14 +79,15 @@ public interface SqlFun {
      * @Author: shiki
      * @Date: 2020/10/28 下午4:02
      */
-    static <T> Optional<T> insert(String querySql, Function<PreparedStatement, T> successFun) {
+    static <T> Optional<T> insertOrBatch(String querySql, Function<PreparedStatement, T> successFun) {
         try (Connection connection = JdbcUtil.getClearConnection();
              final PreparedStatement statement = connection.prepareStatement(querySql);
         ) {
+            connection.setAutoCommit(false);
             final Optional<T> apply = Optional.ofNullable(successFun.apply(statement));
             connection.commit();
             return apply;
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);
         }

@@ -3,12 +3,15 @@ package com.shiki.demo.oldHandle;
 import com.shiki.demo.constants.BaseConstants;
 import com.shiki.demo.constants.MergeRule;
 import com.shiki.demo.fun.SqlFun;
+import com.shiki.demo.funOld2New.GenerateFun;
 import com.shiki.demo.jdbc.config.JdbcUtil;
 import com.shiki.demo.movedb.SingletonMapRule;
 import lombok.var;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -20,6 +23,7 @@ import java.util.regex.Pattern;
 
 import static com.shiki.demo.constants.BaseConstants.*;
 import static com.shiki.demo.constants.OldHandleConstants.*;
+import static com.shiki.demo.funOld2New.GenerateFun.getChanDaoByNetwork;
 import static com.shiki.demo.funOld2New.GenerateFun.updateDbByMd;
 import static java.lang.System.currentTimeMillis;
 import static java.util.stream.Collectors.*;
@@ -104,6 +108,58 @@ public class LineAllIsEmpty {
         return map;
     }).orElseGet(HashMap::new);
 
+    /**
+     * 数据库异常字段
+     *
+     * @Author: shiki
+     * @Date: 2020/12/10 下午7:06
+     */
+    public static final Map<String, List<String>> EXCEPTION_COLUMNS = conn(stat -> {
+        final Map<String, List<String>> map = new HashMap<>();
+        SqlFun.query(EXCEPTION_COLUMN, resultSet -> {
+            try {
+                while (resultSet.next()) {
+                    final String tableName = resultSet.getString("table_name");
+                    final String columnName = resultSet.getString("column_name");
+                    map.computeIfAbsent(tableName, k-> new ArrayList<>()).add(columnName);
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+                throw new RuntimeException(e);
+            }
+            return map;
+        });
+        return map;
+    }).orElseGet(HashMap::new);
+
+    /**
+     * 待合并的表
+     *
+     * @Author: shiki
+     * @Date: 2020/12/10 下午7:07
+     */
+    public static final List<String> MERGE_TABLES = conn(stat -> {
+        final List<String> list = new ArrayList<>();
+        getChanDaoByNetwork(GenerateFun.CHAN_DAO, reader -> {
+            String str;
+            String strCopy = "";
+            try {
+                while ((str = reader.readLine()) != null) {
+                    if (str.contains("--------------")) {
+                        final String s = strCopy.split("\\.")[1].trim();
+                        final String e = s.split(" ")[0];
+                        list.add(e);
+                    }
+                    strCopy = str;
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return list;
+        });
+        return list.stream().distinct().collect(toList());
+    }).orElseGet(ArrayList::new);
+
     static final Map<String, List<String>> INVALID_MAP = conn(stat -> {
         final Map<String, List<SingletonMapRule>> mapByMd = updateDbByMd();
         final Map<String, List<String>> map = new HashMap<>(72);
@@ -134,6 +190,15 @@ public class LineAllIsEmpty {
         try (final PrintStream updateSql = new PrintStream(new File(_1_COPY_INVALID_COLUMN_TO_JSON));
              final PrintStream dropSql = new PrintStream(new File(_2_DEL_INVALID_COLUMN));
              final PrintStream setJson = new PrintStream(new File(_1_SET_JSON))) {
+//            删除合并表
+            MERGE_TABLES.forEach(INVALID_MAP::remove);
+//
+            System.out.println(INVALID_MAP.get("business_check_opinion_big_record"));
+            EXCEPTION_COLUMNS.forEach((k, v) ->
+                    INVALID_MAP.computeIfPresent(k, (k1, v1) ->
+                            v1.stream().filter(item -> !v.contains(item)).collect(toList()))
+            );
+            System.out.println(INVALID_MAP.get("business_check_opinion_big_record"));
             INVALID_MAP.forEach((k, v) -> {
                 final String infoDetail = "history";
                 updateSql.printf((ADD_COLUMN) + "%n", k, infoDetail);
@@ -201,7 +266,7 @@ public class LineAllIsEmpty {
         List<SQLException> list = new ArrayList<>();
         final List<String> excludeTableName = MergeRule.check.stream().map(SingletonMapRule::oldTableName).distinct().collect(toList());
 
-        SqlFun.insert(INSERT_SINGLETON_MAP_RULE, stat -> {
+        SqlFun.insertOrBatch(INSERT_SINGLETON_MAP_RULE, stat -> {
             try {
                 map.forEach((k, v) -> v.stream()
                         .distinct()
@@ -218,11 +283,12 @@ public class LineAllIsEmpty {
                                 stat.setString(4, oldColumn.equals(newColumn) ? excludeTableName.contains(s.oldTableName()) ? newColumn : newColumn + "_swap" : newColumn);
                                 stat.setString(5, MergeRule.mysqlType2javaType(s.newColumnJavaType()).trim());
                                 stat.setString(6, s.newDbDefault() == null ? "null" : s.newDbDefault().trim());
-                                stat.setString(7, oldColumn.equals(newColumn) ? null : oldColumn);
+                                stat.setString(7, ObjectUtils.isNotEmpty(s.jsonKey()) ? s.jsonKey() : oldColumn.equals(newColumn) ? null : oldColumn);
                                 stat.setString(8, s.oldMainIdName() == null ? query.get(oldTableName) == null ? "find not primary" : query.get(oldTableName) : s.oldMainIdName().trim());
                                 stat.setString(9, s.newMainIdName() == null ? query.get(oldTableName) == null ? "find not primary" : query.get(oldTableName) : s.newMainIdName().trim());
-                                stat.setBoolean(10, !oldColumn.equals(newColumn));
+                                stat.setBoolean(10, ObjectUtils.isEmpty(s.jsonKey()) && !oldColumn.equals(newColumn));
                                 stat.setInt(11, s.tableType() == null ? 1 : s.tableType());
+                                stat.setBoolean(12, s.isJson() != null && s.isJson());
                                 stat.addBatch();
                             } catch (SQLException e) {
                                 e.printStackTrace();
@@ -244,7 +310,6 @@ public class LineAllIsEmpty {
         final long start = currentTimeMillis();
         EXECUTOR.submit(LineAllIsEmpty::outTableFilterSql);
 //        EXECUTOR.submit(LineAllIsEmpty::insert);
-
         EXECUTOR.shutdown();
         System.out.println("-- 全部执行完毕,消耗总时长" + (currentTimeMillis() - start) + "毫秒");
     }

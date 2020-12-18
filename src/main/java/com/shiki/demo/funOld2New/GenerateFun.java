@@ -15,7 +15,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static com.shiki.demo.constants.BaseConstants.*;
-import static com.shiki.demo.oldHandle.LineAllIsEmpty.COLUMN_COMMENT_MAP;
+import static com.shiki.demo.oldHandle.LineAllIsEmpty.*;
 import static java.util.stream.Collectors.*;
 
 /**
@@ -59,7 +59,7 @@ public class GenerateFun {
      * @Author: shiki
      * @Date: 2020/12/1 下午6:06
      */
-    final static ChanDao CHAN_DAO = initChandao();
+    public final static ChanDao CHAN_DAO = initChandao();
 
     /**
      * mysql中的 '`' 标识符
@@ -174,7 +174,7 @@ public class GenerateFun {
      * @Author: shiki
      * @Date: 2020/12/1 下午6:06
      */
-    static <T> T getChanDaoByNetwork(ChanDao chanDao, Function<BufferedReader, T> fun) {
+    public static <T> T getChanDaoByNetwork(ChanDao chanDao, Function<BufferedReader, T> fun) {
         Process proc;
         try {
             final String path = GenerateFun.class.getClassLoader().getResource("py/chan_dao.py").getPath();
@@ -242,6 +242,12 @@ public class GenerateFun {
             final LinkedList<String> modifyList = new LinkedList<>();
             final LinkedList<String> setList = new LinkedList<>();
             final List<String> delList = new LinkedList<>();
+            MERGE_TABLES.forEach(map::remove);
+            EXCEPTION_COLUMNS.forEach((k, v) ->
+                    map.computeIfPresent(k, (k1, v1) -> v1.stream()
+                            .filter(item -> !v.contains(mysqlSemicolon.matcher(item.toSingletonMapRule().oldColumn()).replaceAll("")))
+                            .collect(toList()))
+            );
             map.forEach((tableName, columnNames) -> {
                 addList.add("ALTER TABLE " + tableName);
                 modifyList.add("ALTER TABLE " + tableName);

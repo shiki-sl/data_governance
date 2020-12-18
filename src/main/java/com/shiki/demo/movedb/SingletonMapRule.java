@@ -20,10 +20,7 @@ import java.io.Serializable;
 @Accessors(chain = true, fluent = true)
 public class SingletonMapRule implements Serializable {
 
-    /**
-     * id
-     */
-    private Integer id;
+    private static final long serialVersionUID = 1L;
 
     /**
      * 旧表名
@@ -71,22 +68,18 @@ public class SingletonMapRule implements Serializable {
     private String newDbDefault;
 
     /**
-     * 是否转json字段 1转json， 0不转json
-     */
-    private String isJson;
-
-    /**
      * 转json时的key，保存在新数据库中的列名为history
      */
     private String jsonKey;
 
+
+    /**
+     * new_column是否是json类型
+     */
+    private Boolean isJson = false;
+
     /**
      * 是否需要在json和new_column中保留两份数据
      */
-    private String isBackup;
-
-    /**
-     * 临时字段后缀
-     */
-    private String swapName;
+    private Boolean isBackup;
 }
